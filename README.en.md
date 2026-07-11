@@ -1,5 +1,7 @@
 # Waha40k MCP Server
 
+[![CI](https://github.com/MEC-Guard/Waha40kMcp/actions/workflows/ci.yml/badge.svg)](https://github.com/MEC-Guard/Waha40kMcp/actions/workflows/ci.yml)
+
 *[Deutsche Version / German version](README.md)*
 
 An [MCP](https://modelcontextprotocol.io) (Model Context Protocol) server for Warhammer 40,000 (10th Edition) that supplies Claude (or any other MCP-capable client) with live data from [Wahapedia](https://wahapedia.ru) and the official [Munitorum Field Manual](https://mfm.warhammer-community.com).
@@ -219,6 +221,8 @@ dotnet test
 
 ```
 Waha40kMcp/
+├── Waha40kMcp.sln               # Solution (both projects)
+├── .github/workflows/ci.yml    # GitHub Actions: build + test on every push/PR
 ├── Program.cs                  # Entry point: stdio or --http mode
 ├── Data/
 │   ├── WahapediaRepository.cs  # Loads & indexes Wahapedia CSVs
