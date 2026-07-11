@@ -323,13 +323,6 @@ public class MfmScraper : IMfmScraper
         }
     }
 
-    /// <summary>Fallback: Text-Parsing des Seiteninhalts.</summary>
-    private static Dictionary<string, List<PointsCostEntry>> ParseMfmText(string text)
-    {
-        var (units, _) = ParseMfmTextFull(text);
-        return units;
-    }
-
     /// <summary>
     /// Vollständiger Parser: erkennt UNIT COSTS Sektionen (mit Copy-Tier-Staffelung)
     /// UND separate WARGEAR OPTIONS Sektionen (Punktaufschlag pro Modell mit dieser Option).

@@ -304,7 +304,7 @@ public class CombatCalculator(WahapediaRepository repo)
         sb.AppendLine();
 
         // Erkannte Fähigkeiten ausgeben
-        var attackerMods = attackerAbilities.GetSummary(mode);
+        var attackerMods = attackerAbilities.GetSummary();
         var defenderMods = defenderAbilities.GetDefenderSummary();
 
         if (attackerMods.Count > 0 || defenderMods.Count > 0)
@@ -885,7 +885,7 @@ public class CombatAbilities
     public int  AdditionalInvSave  { get; set; }
     public int  DamageReduction    { get; set; }
 
-    public List<string> GetSummary(string mode)
+    public List<string> GetSummary()
     {
         var result = new List<string>();
         if (LethalHits)            result.Add("✅ Lethal Hits");

@@ -139,16 +139,6 @@ public class Faction
     public string Link { get; set; } = "";
 }
 
-// ── Points ────────────────────────────────────────────────────────────────────
-
-public class DatasheetPoints
-{
-    public string DatasheetId { get; set; } = "";
-    public string Cost { get; set; } = "";
-    public string Models { get; set; } = "";
-    public string Active { get; set; } = "";
-}
-
 // ── Army Builder ──────────────────────────────────────────────────────────────
 
 public class ArmyUnit
@@ -157,8 +147,6 @@ public class ArmyUnit
     public string Name { get; set; } = "";
     public int Points { get; set; }
     public int ModelCount { get; set; } = 1;
-    public List<string> SelectedWeapons { get; set; } = [];
-    public List<string> SelectedEnhancements { get; set; } = [];
 }
 
 public class ArmyList
