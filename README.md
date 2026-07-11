@@ -1,5 +1,7 @@
 # Waha40k MCP Server
 
+*[English version](README.en.md)*
+
 Ein [MCP](https://modelcontextprotocol.io)-Server (Model Context Protocol) für Warhammer 40.000 (10th Edition), der Claude (oder jeden anderen MCP-fähigen Client) mit Live-Daten von [Wahapedia](https://wahapedia.ru) und dem offiziellen [Munitorum Field Manual](https://mfm.warhammer-community.com) versorgt.
 
 *Powered by Wahapedia — nicht mit Games Workshop oder Wahapedia affiliiert.*
