@@ -139,6 +139,31 @@ public class Faction
     public string Link { get; set; } = "";
 }
 
+// ── Detachments & Enhancements ──────────────────────────────────────────────────
+
+public class DetachmentAbility
+{
+    public string Id { get; set; } = "";
+    public string FactionId { get; set; } = "";
+    public string DetachmentId { get; set; } = "";
+    public string Detachment { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Legend { get; set; } = "";
+    public string Description { get; set; } = "";
+}
+
+public class Enhancement
+{
+    public string Id { get; set; } = "";
+    public string FactionId { get; set; } = "";
+    public string DetachmentId { get; set; } = "";
+    public string Detachment { get; set; } = "";
+    public string Name { get; set; } = "";
+    public int Cost { get; set; }
+    public string Legend { get; set; } = "";
+    public string Description { get; set; } = "";
+}
+
 // ── Army Builder ──────────────────────────────────────────────────────────────
 
 public class ArmyUnit
@@ -147,6 +172,11 @@ public class ArmyUnit
     public string Name { get; set; } = "";
     public int Points { get; set; }
     public int ModelCount { get; set; } = 1;
+
+    /// <summary>Name der angehängten Enhancement, falls vorhanden (leer = keine).</summary>
+    public string EnhancementName { get; set; } = "";
+    /// <summary>Punktekosten der Enhancement — bereits in <see cref="Points"/> enthalten.</summary>
+    public int EnhancementCost { get; set; }
 }
 
 public class ArmyList

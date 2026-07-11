@@ -69,71 +69,83 @@ public class CombatCalculator(WahapediaRepository repo)
                 if (!grantsToUnit) continue;
             }
 
-            // Feel No Pain
-            var fnpMatch = Regex.Match(text, @"Feel No Pain (\d)\+", RegexOptions.IgnoreCase);
-            if (fnpMatch.Success && a.FnpValue == 0)
-                a.FnpValue = int.Parse(fnpMatch.Groups[1].Value);
-
-            // Lethal Hits
-            if (text.Contains("Lethal Hits", StringComparison.OrdinalIgnoreCase))
-                a.LethalHits = true;
-
-            // Sustained Hits N
-            var sustainedMatch = Regex.Match(text, @"Sustained Hits (\d)", RegexOptions.IgnoreCase);
-            if (sustainedMatch.Success)
-                a.SustainedHitsCount = Math.Max(a.SustainedHitsCount,
-                    int.Parse(sustainedMatch.Groups[1].Value));
-
-            // Devastating Wounds
-            if (text.Contains("Devastating Wounds", StringComparison.OrdinalIgnoreCase))
-                a.DevastatingWounds = true;
-
-            // Re-roll Hit rolls of 1
-            if (Regex.IsMatch(text, @"re-?roll.{0,40}hit roll.{0,15}of 1", RegexOptions.IgnoreCase))
-                a.RerollHitsOf1 = true;
-
-            // Re-roll all Hit rolls
-            if (Regex.IsMatch(text, @"re-?roll.{0,10}all.{0,10}hit roll", RegexOptions.IgnoreCase))
-                a.RerollAllHits = true;
-
-            // Re-roll Wound rolls of 1
-            if (Regex.IsMatch(text, @"re-?roll.{0,40}wound roll.{0,15}of 1", RegexOptions.IgnoreCase))
-                a.RerollWoundsOf1 = true;
-
-            // Re-roll all Wound rolls
-            if (Regex.IsMatch(text, @"re-?roll.{0,10}all.{0,10}wound roll", RegexOptions.IgnoreCase))
-                a.RerollAllWounds = true;
-
-            // Stealth / -1 to hit
-            if (text.Contains("Stealth", StringComparison.OrdinalIgnoreCase) ||
-                Regex.IsMatch(text, @"[–\-]1.{0,20}hit roll", RegexOptions.IgnoreCase))
-                a.MinusOneToHit = true;
-
-            // Invulnerable Save
-            var invMatch = Regex.Match(text, @"(\d)\+\s+invulnerable save", RegexOptions.IgnoreCase);
-            if (invMatch.Success)
-            {
-                int inv = int.Parse(invMatch.Groups[1].Value);
-                a.AdditionalInvSave = a.AdditionalInvSave == 0
-                    ? inv : Math.Min(a.AdditionalInvSave, inv);
-            }
-
-            // Damage reduction
-            if (Regex.IsMatch(text, @"reduc.{0,30}damage.{0,10}by 1", RegexOptions.IgnoreCase))
-                a.DamageReduction = 1;
-
-            // Kritischer Treffer/Wunde schon ab niedrigerer Zahl als der Standard-6
-            // (z.B. "Critical Hits on a 5+", "Critical Hits and Critical Wounds happen on a 5+")
-            var critHitMatch = Regex.Match(text, @"critical hits?.{0,60}(\d)\+", RegexOptions.IgnoreCase);
-            if (critHitMatch.Success)
-                a.CritHitThreshold = Math.Min(a.CritHitThreshold, int.Parse(critHitMatch.Groups[1].Value));
-
-            var critWoundMatch = Regex.Match(text, @"critical wounds?.{0,60}(\d)\+", RegexOptions.IgnoreCase);
-            if (critWoundMatch.Success)
-                a.CritWoundThreshold = Math.Min(a.CritWoundThreshold, int.Parse(critWoundMatch.Groups[1].Value));
+            ApplyAbilityText(a, text);
         }
 
         return a;
+    }
+
+    /// <summary>
+    /// Erkennt regelrelevante Schlüsselwörter/Formulierungen in einem beliebigen Fähigkeitstext
+    /// (Datasheet-Ability, Detachment-Ability oder Enhancement-Beschreibung) und trägt sie in
+    /// <paramref name="a"/> ein. Wird von <see cref="ParseAbilities"/> pro Datasheet-Ability
+    /// aufgerufen, aber auch direkt für Detachment-/Enhancement-Text genutzt (dort gibt es keine
+    /// Leader/Exclude-Filterung, der Effekt gilt ja unmittelbar für die eigene Einheit).
+    /// </summary>
+    internal static void ApplyAbilityText(CombatAbilities a, string text)
+    {
+        // Feel No Pain
+        var fnpMatch = Regex.Match(text, @"Feel No Pain (\d)\+", RegexOptions.IgnoreCase);
+        if (fnpMatch.Success && a.FnpValue == 0)
+            a.FnpValue = int.Parse(fnpMatch.Groups[1].Value);
+
+        // Lethal Hits
+        if (text.Contains("Lethal Hits", StringComparison.OrdinalIgnoreCase))
+            a.LethalHits = true;
+
+        // Sustained Hits N
+        var sustainedMatch = Regex.Match(text, @"Sustained Hits (\d)", RegexOptions.IgnoreCase);
+        if (sustainedMatch.Success)
+            a.SustainedHitsCount = Math.Max(a.SustainedHitsCount,
+                int.Parse(sustainedMatch.Groups[1].Value));
+
+        // Devastating Wounds
+        if (text.Contains("Devastating Wounds", StringComparison.OrdinalIgnoreCase))
+            a.DevastatingWounds = true;
+
+        // Re-roll Hit rolls of 1
+        if (Regex.IsMatch(text, @"re-?roll.{0,40}hit roll.{0,15}of 1", RegexOptions.IgnoreCase))
+            a.RerollHitsOf1 = true;
+
+        // Re-roll all Hit rolls
+        if (Regex.IsMatch(text, @"re-?roll.{0,10}all.{0,10}hit roll", RegexOptions.IgnoreCase))
+            a.RerollAllHits = true;
+
+        // Re-roll Wound rolls of 1
+        if (Regex.IsMatch(text, @"re-?roll.{0,40}wound roll.{0,15}of 1", RegexOptions.IgnoreCase))
+            a.RerollWoundsOf1 = true;
+
+        // Re-roll all Wound rolls
+        if (Regex.IsMatch(text, @"re-?roll.{0,10}all.{0,10}wound roll", RegexOptions.IgnoreCase))
+            a.RerollAllWounds = true;
+
+        // Stealth / -1 to hit
+        if (text.Contains("Stealth", StringComparison.OrdinalIgnoreCase) ||
+            Regex.IsMatch(text, @"[–\-]1.{0,20}hit roll", RegexOptions.IgnoreCase))
+            a.MinusOneToHit = true;
+
+        // Invulnerable Save
+        var invMatch = Regex.Match(text, @"(\d)\+\s+invulnerable save", RegexOptions.IgnoreCase);
+        if (invMatch.Success)
+        {
+            int inv = int.Parse(invMatch.Groups[1].Value);
+            a.AdditionalInvSave = a.AdditionalInvSave == 0
+                ? inv : Math.Min(a.AdditionalInvSave, inv);
+        }
+
+        // Damage reduction
+        if (Regex.IsMatch(text, @"reduc.{0,30}damage.{0,10}by 1", RegexOptions.IgnoreCase))
+            a.DamageReduction = 1;
+
+        // Kritischer Treffer/Wunde schon ab niedrigerer Zahl als der Standard-6
+        // (z.B. "Critical Hits on a 5+", "Critical Hits and Critical Wounds happen on a 5+")
+        var critHitMatch = Regex.Match(text, @"critical hits?.{0,60}(\d)\+", RegexOptions.IgnoreCase);
+        if (critHitMatch.Success)
+            a.CritHitThreshold = Math.Min(a.CritHitThreshold, int.Parse(critHitMatch.Groups[1].Value));
+
+        var critWoundMatch = Regex.Match(text, @"critical wounds?.{0,60}(\d)\+", RegexOptions.IgnoreCase);
+        if (critWoundMatch.Success)
+            a.CritWoundThreshold = Math.Min(a.CritWoundThreshold, int.Parse(critWoundMatch.Groups[1].Value));
     }
 
     // ── Würfel-Parser ─────────────────────────────────────────────────────────
@@ -196,6 +208,30 @@ public class CombatCalculator(WahapediaRepository repo)
         return Math.Min(1.0, Math.Max(normalSaveProb, invSaveProb));
     }
 
+    /// <summary>
+    /// Sucht Detachment-Fähigkeit und/oder Enhancement einer Fraktion und trägt ihren Effekt in
+    /// <paramref name="abilities"/> ein. Gibt eine Fehlermeldung zurück falls angegeben, aber nicht
+    /// gefunden — sonst null.
+    /// </summary>
+    private string? ApplyDetachmentAndEnhancement(
+        CombatAbilities abilities, string factionId,
+        string? detachmentName, string? enhancementName, string sideLabel)
+    {
+        if (detachmentName != null)
+        {
+            var detachmentAbility = repo.FindDetachment(factionId, detachmentName);
+            if (detachmentAbility == null) return $"{sideLabel}-Detachment '{detachmentName}' nicht gefunden.";
+            ApplyAbilityText(abilities, detachmentAbility.Name + " " + detachmentAbility.Description);
+        }
+        if (enhancementName != null)
+        {
+            var enhancement = repo.FindEnhancement(factionId, enhancementName, detachmentName);
+            if (enhancement == null) return $"{sideLabel}-Enhancement '{enhancementName}' nicht gefunden.";
+            ApplyAbilityText(abilities, enhancement.Name + " " + enhancement.Description);
+        }
+        return null;
+    }
+
     // ── Haupt-Tool ────────────────────────────────────────────────────────────
 
     [McpServerTool, Description(
@@ -216,7 +252,11 @@ public class CombatCalculator(WahapediaRepository repo)
         [Description("Name des Support-Charakters beim Angreifer (optional), z.B. 'Apothecary'")] string? attacker_support = null,
         [Description("Name des Support-Charakters beim Verteidiger (optional), z.B. 'Painboy'")] string? defender_support = null,
         [Description("Anzahl Modelle im Verteidiger-Trupp (relevant für BLAST-Waffen: +1 Attacke bei 6-10, +3 bei 11+ Modellen)")] int defender_models = 5,
-        [Description("Hat der Verteidiger Benefit of Cover? Waffen mit AP -1 werden dadurch zu AP 0 (gilt nicht für AP -2 oder schlechter)")] bool defender_cover = false)
+        [Description("Hat der Verteidiger Benefit of Cover? Waffen mit AP -1 werden dadurch zu AP 0 (gilt nicht für AP -2 oder schlechter)")] bool defender_cover = false,
+        [Description("Detachment des Angreifers (optional), dessen Detachment-Fähigkeit einfließt, z.B. 'Shield Host'")] string? attacker_detachment = null,
+        [Description("Name der Enhancement, die der Angreifer(-Leader) trägt (optional), z.B. 'Aegis Projector'")] string? attacker_enhancement = null,
+        [Description("Detachment des Verteidigers (optional), dessen Detachment-Fähigkeit einfließt")] string? defender_detachment = null,
+        [Description("Name der Enhancement, die der Verteidiger(-Leader) trägt (optional)")] string? defender_enhancement = null)
     {
         var attackerDs = repo.SearchDatasheets(attacker_name, attacker_faction).FirstOrDefault();
         var defenderDs = repo.SearchDatasheets(defender_name, defender_faction).FirstOrDefault();
@@ -263,6 +303,14 @@ public class CombatCalculator(WahapediaRepository repo)
         if (defenderSupportDs != null)
             defenderAbilities.MergeWith(ParseAbilities(defenderSupportDs, isLeader: true));
 
+        // Detachment-Fähigkeit & Enhancement einbeziehen
+        var attachError = ApplyDetachmentAndEnhancement(
+            attackerAbilities, attackerDs.FactionId, attacker_detachment, attacker_enhancement, "Angreifer");
+        if (attachError != null) return attachError;
+        var defendError = ApplyDetachmentAndEnhancement(
+            defenderAbilities, defenderDs.FactionId, defender_detachment, defender_enhancement, "Verteidiger");
+        if (defendError != null) return defendError;
+
         // Defender Stats
         var defModel = defenderDs.Models.FirstOrDefault();
         if (defModel == null) return $"Keine Stats für '{defender_name}' gefunden.";
@@ -303,8 +351,12 @@ public class CombatCalculator(WahapediaRepository repo)
                       $"**Angreifer-Modelle:** {attacker_models}");
         if (attackerLeaderDs != null) sb.AppendLine($"**Angreifer-Leader:** {attackerLeaderDs.Name}");
         if (attackerSupportDs != null) sb.AppendLine($"**Angreifer-Support:** {attackerSupportDs.Name}");
+        if (attacker_detachment != null) sb.AppendLine($"**Angreifer-Detachment:** {attacker_detachment}");
+        if (attacker_enhancement != null) sb.AppendLine($"**Angreifer-Enhancement:** {attacker_enhancement}");
         if (defenderLeaderDs != null) sb.AppendLine($"**Verteidiger-Leader:** {defenderLeaderDs.Name}");
         if (defenderSupportDs != null) sb.AppendLine($"**Verteidiger-Support:** {defenderSupportDs.Name}");
+        if (defender_detachment != null) sb.AppendLine($"**Verteidiger-Detachment:** {defender_detachment}");
+        if (defender_enhancement != null) sb.AppendLine($"**Verteidiger-Enhancement:** {defender_enhancement}");
         sb.AppendLine();
 
         // Verteidiger Stats
@@ -411,6 +463,10 @@ public class CombatCalculator(WahapediaRepository repo)
         [Description("Name des Support-Charakters beim Verteidiger (optional), z.B. 'Painboy'")] string? defender_support = null,
         [Description("Anzahl Modelle im Verteidiger-Trupp (relevant für BLAST-Waffen: +1 Attacke bei 6-10, +3 bei 11+ Modellen)")] int defender_models = 5,
         [Description("Hat der Verteidiger Benefit of Cover? Waffen mit AP -1 werden dadurch zu AP 0 (gilt nicht für AP -2 oder schlechter)")] bool defender_cover = false,
+        [Description("Detachment des Angreifers (optional), dessen Detachment-Fähigkeit einfließt, z.B. 'Shield Host'")] string? attacker_detachment = null,
+        [Description("Name der Enhancement, die der Angreifer(-Leader) trägt (optional), z.B. 'Aegis Projector'")] string? attacker_enhancement = null,
+        [Description("Detachment des Verteidigers (optional), dessen Detachment-Fähigkeit einfließt")] string? defender_detachment = null,
+        [Description("Name der Enhancement, die der Verteidiger(-Leader) trägt (optional)")] string? defender_enhancement = null,
         [Description("Anzahl simulierter Durchläufe (Standard 10000, mehr = genauer aber langsamer)")] int iterations = 10000)
     {
         var attackerDs = repo.SearchDatasheets(attacker_name, attacker_faction).FirstOrDefault();
@@ -455,6 +511,13 @@ public class CombatCalculator(WahapediaRepository repo)
             defenderAbilities.MergeWith(ParseAbilities(defenderLeaderDs, isLeader: true));
         if (defenderSupportDs != null)
             defenderAbilities.MergeWith(ParseAbilities(defenderSupportDs, isLeader: true));
+
+        var attachError = ApplyDetachmentAndEnhancement(
+            attackerAbilities, attackerDs.FactionId, attacker_detachment, attacker_enhancement, "Angreifer");
+        if (attachError != null) return attachError;
+        var defendError = ApplyDetachmentAndEnhancement(
+            defenderAbilities, defenderDs.FactionId, defender_detachment, defender_enhancement, "Verteidiger");
+        if (defendError != null) return defendError;
 
         var defModel = defenderDs.Models.FirstOrDefault();
         if (defModel == null) return $"Keine Stats für '{defender_name}' gefunden.";
@@ -562,8 +625,12 @@ public class CombatCalculator(WahapediaRepository repo)
                       $"**Angreifer-Modelle:** {attacker_models}  **Durchläufe:** {iterations:N0}");
         if (attackerLeaderDs != null) sb.AppendLine($"**Angreifer-Leader:** {attackerLeaderDs.Name}");
         if (attackerSupportDs != null) sb.AppendLine($"**Angreifer-Support:** {attackerSupportDs.Name}");
+        if (attacker_detachment != null) sb.AppendLine($"**Angreifer-Detachment:** {attacker_detachment}");
+        if (attacker_enhancement != null) sb.AppendLine($"**Angreifer-Enhancement:** {attacker_enhancement}");
         if (defenderLeaderDs != null) sb.AppendLine($"**Verteidiger-Leader:** {defenderLeaderDs.Name}");
         if (defenderSupportDs != null) sb.AppendLine($"**Verteidiger-Support:** {defenderSupportDs.Name}");
+        if (defender_detachment != null) sb.AppendLine($"**Verteidiger-Detachment:** {defender_detachment}");
+        if (defender_enhancement != null) sb.AppendLine($"**Verteidiger-Enhancement:** {defender_enhancement}");
         sb.AppendLine();
 
         sb.AppendLine("## Verteidiger Stats");

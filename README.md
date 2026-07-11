@@ -8,7 +8,7 @@ Ein [MCP](https://modelcontextprotocol.io)-Server (Model Context Protocol) für 
 
 *Powered by Wahapedia — nicht mit Games Workshop oder Wahapedia affiliiert.*
 
-Der Server stellt **20 Tools** in vier Bereichen bereit:
+Der Server stellt **25 Tools** in vier Bereichen bereit:
 
 - 📖 **Datenbank-Abfragen** — Datasheets, Fraktionen, Stratagems, Punkte-Vergleich
 - ⚔️ **MathHammer / Combat-Rechner** — Erwartungswert- und Monte-Carlo-Schadensberechnung inkl. automatischer Fähigkeiten-Erkennung
@@ -134,6 +134,8 @@ Direkte Abfragen der Wahapedia-Datenbank (Datasheets, Fraktionen, Stratagems). L
 | `list_faction_units` | `faction`, `keyword_filter?` | Listet alle Einheiten einer Fraktion, optional gefiltert nach Keyword (z.B. `Infantry`, `Vehicle`, `Character`). |
 | `search_stratagems` | `faction`, `query?`, `phase?`, `detachment?` | Sucht Stratagems einer Fraktion, optional nach Text, Phase (`Shooting`, `Fight`, `Movement`, `Command`) oder Detachment gefiltert. |
 | `list_factions` | – | Listet alle verfügbaren Fraktionen mit ihrer internen ID. |
+| `list_detachments` | `faction` | Listet alle Detachments einer Fraktion mit ihrer Detachment-Fähigkeit (voller Regeltext). |
+| `list_enhancements` | `faction`, `detachment?` | Listet Enhancements (Ausrüstungs-Boni für Charaktere) einer Fraktion mit Punktekosten und Effekt, optional nach Detachment gefiltert. |
 | `calculate_army_points` | `unit_names`, `faction`, `points_limit=2000` | Berechnet die Gesamtpunkte einer kommagetrennten Liste von Einheitennamen und prüft das Punktelimit. |
 | `compare_units` | `unit_a`, `unit_b` | Vergleicht zwei Einheiten nebeneinander (Stats + Punkte). |
 
@@ -150,6 +152,7 @@ Liest Waffen-Keywords **und** Datasheet-Fähigkeiten automatisch aus (Re-rolls, 
 - **Blast** — `defender_models` gibt die Modellanzahl im Ziel-Trupp an; bei 6-10 Modellen gibt's automatisch +1 Attacke, bei 11+ Modellen +3 Attacken (10th-Edition-Kernregel).
 - **Benefit of Cover** — `defender_cover: true` setzt Waffen mit AP -1 automatisch auf AP 0 (wirkt sich nicht auf AP -2 oder schlechter aus, wie in den Regeln vorgesehen).
 - **Abweichende Crit-Schwellen** — Fähigkeitstexte wie „Critical Hits on a 5+" werden automatisch erkannt und gehen in die Sustained-Hits-/Lethal-Hits-/Devastating-Wounds-Rechnung ein.
+- **Detachment-Fähigkeiten & Enhancements** — `attacker_detachment?`/`defender_detachment?` und `attacker_enhancement?`/`defender_enhancement?` lassen die Detachment-Regel bzw. eine getragene Enhancement (z.B. „4+ invulnerable save") in die Rechnung einfließen, genau wie Datasheet-Fähigkeiten. Siehe `list_detachments()`/`list_enhancements()` für gültige Namen.
 
 Beispiel:
 ```
@@ -162,10 +165,13 @@ Verwaltet In-Memory-Army-Listen und lädt Punktekosten automatisch vom offiziell
 
 | Tool | Parameter | Beschreibung |
 |------|-----------|--------------|
-| `create_army` | `army_name`, `faction`, `points_limit=2000` | Erstellt eine neue Army-Liste. |
+| `create_army` | `army_name`, `faction`, `points_limit=2000`, `detachment?` | Erstellt eine neue Army-Liste, optional direkt mit Detachment (siehe `list_detachments()`). |
+| `set_detachment` | `army_name`, `detachment` | Legt das Detachment einer Army fest oder ändert es. Nötig für `add_enhancement`. |
 | `add_unit` | `army_name`, `unit_name`, `model_count=0` | Fügt eine Einheit hinzu; lädt die passenden Punktekosten automatisch vom MFM (inkl. Copy-Tier-Staffelung nach Modellanzahl). |
 | `remove_unit` | `army_name`, `unit_index` | Entfernt eine Einheit per Index (1-basiert, siehe `show_army`). |
-| `show_army` | `army_name` | Zeigt die aktuelle Liste mit allen Einheiten, Punkten und einem Fortschrittsbalken zum Punktelimit. |
+| `add_enhancement` | `army_name`, `unit_index`, `enhancement_name` | Hängt eine Enhancement an eine Einheit (max. 1 pro Einheit); Punktekosten fließen automatisch in die Army-Gesamtsumme ein. |
+| `remove_enhancement` | `army_name`, `unit_index` | Entfernt die Enhancement einer Einheit wieder. |
+| `show_army` | `army_name` | Zeigt die aktuelle Liste mit allen Einheiten, Enhancements, Punkten und einem Fortschrittsbalken zum Punktelimit. |
 | `list_armies` | – | Listet alle in dieser Server-Sitzung gespeicherten Armies. |
 | `refresh_mfm_points` | `faction` | Löscht den Punkte-Cache einer Fraktion und lädt frisch vom MFM — nutzen, wenn Games Workshop neue Punkte veröffentlicht hat. |
 | `get_wargear_options` | `unit_name`, `faction?` | Zeigt Wargear-Punktaufpreise einer Einheit (z.B. „per Storm Shield: +5 Punkte pro Modell"), zusätzlich zum Grundpreis. |
@@ -194,6 +200,8 @@ Eine lokale, dauerhaft gespeicherte Wissensbasis für taktische Tipps, die Claud
 - *"Wie viel Schaden macht ein Trupp von 5 Einhyr Hearthguard gegen Deathshroud Terminators im Fernkampf?"*
 - *"Simuliere 10.000 Durchläufe: Wolf Guard Terminators im Nahkampf gegen Necron Warriors"*
 - *"Erstelle eine 2000-Punkte-Liste für Leagues of Votann und füge 10 Hernkyn Yaegirs hinzu"*
+- *"Welche Detachments gibt es für Adeptus Custodes und was machen sie?"*
+- *"Zeig mir die Enhancements im Shield-Host-Detachment"*
 - *"Recherchiere aktuelle Taktiken für Leagues of Votann gegen Space Marines"*
 - *"Was habe ich mir schon zu Deployment-Tipps notiert?"*
 

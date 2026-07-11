@@ -20,6 +20,8 @@ public class WahapediaRepository
     public Dictionary<string, Datasheet> Datasheets { get; private set; } = [];
     public Dictionary<string, Stratagem> Stratagems { get; private set; } = [];
     public Dictionary<string, Faction> Factions { get; private set; } = [];
+    public Dictionary<string, DetachmentAbility> DetachmentAbilities { get; private set; } = [];
+    public Dictionary<string, Enhancement> Enhancements { get; private set; } = [];
 
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
 
@@ -30,21 +32,26 @@ public class WahapediaRepository
         Directory.CreateDirectory(CacheDir);
         Console.Error.WriteLine("[Waha40k] Lade Daten von Wahapedia...");
 
-        var factionRows   = await LoadCsvAsync("Factions.csv");
-        var sheetRows     = await LoadCsvAsync("Datasheets.csv");
-        var modelRows     = await LoadCsvAsync("Datasheets_models.csv");
-        var weaponRows    = await LoadCsvAsync("Datasheets_wargear.csv");
-        var abilityRows   = await LoadCsvAsync("Datasheets_abilities.csv");
-        var optionRows    = await LoadCsvAsync("Datasheets_options.csv");
-        var stratagemRows = await LoadCsvAsync("Stratagems.csv");
-        var pointsRows    = await TryLoadCsvAsync("Datasheets_models_cost.csv", "Datasheets_points.csv");
+        var factionRows      = await LoadCsvAsync("Factions.csv");
+        var sheetRows        = await LoadCsvAsync("Datasheets.csv");
+        var modelRows        = await LoadCsvAsync("Datasheets_models.csv");
+        var weaponRows       = await LoadCsvAsync("Datasheets_wargear.csv");
+        var abilityRows      = await LoadCsvAsync("Datasheets_abilities.csv");
+        var optionRows       = await LoadCsvAsync("Datasheets_options.csv");
+        var stratagemRows    = await LoadCsvAsync("Stratagems.csv");
+        var pointsRows       = await TryLoadCsvAsync("Datasheets_models_cost.csv", "Datasheets_points.csv");
+        var detachmentRows   = await LoadCsvAsync("Detachment_abilities.csv");
+        var enhancementRows  = await LoadCsvAsync("Enhancements.csv");
 
         BuildFactions(factionRows);
         BuildDatasheets(sheetRows, modelRows, weaponRows, abilityRows, optionRows, pointsRows);
         BuildStratagems(stratagemRows);
+        BuildDetachmentAbilities(detachmentRows);
+        BuildEnhancements(enhancementRows);
 
         Console.Error.WriteLine($"[Waha40k] Geladen: {Datasheets.Count} Datasheets, " +
-                                $"{Stratagems.Count} Stratagems, {Factions.Count} Fraktionen.");
+                                $"{Stratagems.Count} Stratagems, {Factions.Count} Fraktionen, " +
+                                $"{DetachmentAbilities.Count} Detachments, {Enhancements.Count} Enhancements.");
 
     }
 
@@ -286,6 +293,49 @@ public class WahapediaRepository
         }
     }
 
+    private void BuildDetachmentAbilities(List<Dictionary<string, string>> rows)
+    {
+        foreach (var r in rows)
+        {
+            var id = r.GetValueOrDefault("id", "");
+            if (string.IsNullOrEmpty(id)) continue;
+
+            DetachmentAbilities[id] = new DetachmentAbility
+            {
+                Id           = id,
+                FactionId    = r.GetValueOrDefault("faction_id", ""),
+                DetachmentId = r.GetValueOrDefault("detachment_id", ""),
+                Detachment   = r.GetValueOrDefault("detachment", ""),
+                Name         = r.GetValueOrDefault("name", ""),
+                Legend       = r.GetValueOrDefault("legend", ""),
+                Description  = r.GetValueOrDefault("description", ""),
+            };
+        }
+    }
+
+    private void BuildEnhancements(List<Dictionary<string, string>> rows)
+    {
+        foreach (var r in rows)
+        {
+            var id = r.GetValueOrDefault("id", "");
+            if (string.IsNullOrEmpty(id)) continue;
+
+            var cost = r.GetValueOrDefault("cost", "");
+
+            Enhancements[id] = new Enhancement
+            {
+                Id           = id,
+                FactionId    = r.GetValueOrDefault("faction_id", ""),
+                DetachmentId = r.GetValueOrDefault("detachment_id", ""),
+                Detachment   = r.GetValueOrDefault("detachment", ""),
+                Name         = r.GetValueOrDefault("name", ""),
+                Cost         = int.TryParse(cost, out var c) ? c : 0,
+                Legend       = r.GetValueOrDefault("legend", ""),
+                Description  = r.GetValueOrDefault("description", ""),
+            };
+        }
+    }
+
     // ── Suche-Hilfsmethoden ───────────────────────────────────────────────────
 
     public IEnumerable<Datasheet> SearchDatasheets(string query, string? factionId = null)
@@ -323,5 +373,55 @@ public class WahapediaRepository
         return Factions.Values.FirstOrDefault(f =>
             f.Id.Equals(nameOrId, StringComparison.OrdinalIgnoreCase) ||
             f.Name.Contains(nameOrId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Alle Detachment-Fähigkeiten einer Fraktion, optional nach Detachment-Name gefiltert.</summary>
+    public IEnumerable<DetachmentAbility> GetDetachmentAbilities(string factionId, string? detachment = null)
+    {
+        return DetachmentAbilities.Values
+            .Where(d => d.FactionId.Equals(factionId, StringComparison.OrdinalIgnoreCase) &&
+                        (detachment == null || d.Detachment.Contains(detachment, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(d => d.Detachment);
+    }
+
+    /// <summary>Namen aller Detachments einer Fraktion (eindeutig, alphabetisch).</summary>
+    public IEnumerable<string> GetDetachmentNames(string factionId)
+    {
+        return DetachmentAbilities.Values
+            .Where(d => d.FactionId.Equals(factionId, StringComparison.OrdinalIgnoreCase))
+            .Select(d => d.Detachment)
+            .Where(d => !string.IsNullOrEmpty(d))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(d => d);
+    }
+
+    /// <summary>Findet ein Detachment einer Fraktion per exaktem oder Teilstring-Namen (case-insensitive).</summary>
+    public DetachmentAbility? FindDetachment(string factionId, string detachmentName)
+    {
+        var matches = DetachmentAbilities.Values
+            .Where(d => d.FactionId.Equals(factionId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        return matches.FirstOrDefault(d => d.Detachment.Equals(detachmentName, StringComparison.OrdinalIgnoreCase))
+            ?? matches.FirstOrDefault(d => d.Detachment.Contains(detachmentName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Enhancements einer Fraktion, optional nach Detachment gefiltert.</summary>
+    public IEnumerable<Enhancement> SearchEnhancements(string factionId, string? detachment = null)
+    {
+        return Enhancements.Values
+            .Where(e => e.FactionId.Equals(factionId, StringComparison.OrdinalIgnoreCase) &&
+                        (detachment == null || e.Detachment.Contains(detachment, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(e => e.Detachment).ThenBy(e => e.Name);
+    }
+
+    /// <summary>Findet eine Enhancement einer Fraktion per exaktem oder Teilstring-Namen (case-insensitive).</summary>
+    public Enhancement? FindEnhancement(string factionId, string enhancementName, string? detachment = null)
+    {
+        var matches = Enhancements.Values
+            .Where(e => e.FactionId.Equals(factionId, StringComparison.OrdinalIgnoreCase) &&
+                        (detachment == null || e.Detachment.Contains(detachment, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        return matches.FirstOrDefault(e => e.Name.Equals(enhancementName, StringComparison.OrdinalIgnoreCase))
+            ?? matches.FirstOrDefault(e => e.Name.Contains(enhancementName, StringComparison.OrdinalIgnoreCase));
     }
 }

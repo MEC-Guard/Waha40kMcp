@@ -60,15 +60,27 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
     // ── Tool: Neue Army erstellen ─────────────────────────────────────────────
 
     [McpServerTool, Description(
-        "Erstellt eine neue Army-Liste. " +
-        "Beispiel: create_army('Meine Votann', 'Leagues of Votann', 2000)")]
+        "Erstellt eine neue Army-Liste. Das Detachment kann optional direkt hier oder " +
+        "später per set_detachment() gesetzt werden (nötig für add_enhancement). " +
+        "Beispiel: create_army('Meine Votann', 'Leagues of Votann', 2000, detachment: 'Oathband')")]
     public string create_army(
         [Description("Name der Army, z.B. 'Meine Votann'")] string army_name,
         [Description("Fraktion, z.B. 'Leagues of Votann'")] string faction,
-        [Description("Punktelimit (Standard: 2000)")] int points_limit = 2000)
+        [Description("Punktelimit (Standard: 2000)")] int points_limit = 2000,
+        [Description("Detachment (optional), siehe list_detachments(). Kann auch später per set_detachment() gesetzt werden.")] string? detachment = null)
     {
         var f = repo.FindFaction(faction);
         if (f == null) return $"Fraktion '{faction}' nicht gefunden.";
+
+        string resolvedDetachment = "";
+        if (detachment != null)
+        {
+            var detachmentAbility = repo.FindDetachment(f.Id, detachment);
+            if (detachmentAbility == null)
+                return $"Detachment '{detachment}' nicht gefunden für '{f.Name}'. " +
+                       $"Verfügbar: {string.Join(", ", repo.GetDetachmentNames(f.Id))}";
+            resolvedDetachment = detachmentAbility.Detachment;
+        }
 
         Armies[army_name] = new ArmyList
         {
@@ -76,11 +88,41 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
             FactionId   = f.Id,
             FactionName = f.Name,
             PointsLimit = points_limit,
+            Detachment  = resolvedDetachment,
             Units       = []
         };
 
-        return $"✅ Army **{army_name}** ({f.Name}, {points_limit} Punkte) erstellt!\n\n" +
-               $"Füge Einheiten hinzu mit: `add_unit('{army_name}', 'Einheitenname', Modellanzahl)`";
+        var sb = new StringBuilder();
+        sb.AppendLine($"✅ Army **{army_name}** ({f.Name}, {points_limit} Punkte" +
+                      (resolvedDetachment != "" ? $", Detachment: {resolvedDetachment}" : "") + ") erstellt!");
+        sb.AppendLine();
+        sb.AppendLine($"Füge Einheiten hinzu mit: `add_unit('{army_name}', 'Einheitenname', Modellanzahl)`");
+        if (resolvedDetachment == "")
+            sb.AppendLine($"Detachment setzen mit: `set_detachment('{army_name}', 'Detachment-Name')` — siehe `list_detachments('{f.Name}')`");
+        return sb.ToString();
+    }
+
+    // ── Tool: Detachment setzen ────────────────────────────────────────────────
+
+    [McpServerTool, Description(
+        "Legt das Detachment einer Army-Liste fest (oder ändert es). Nötig für add_enhancement(). " +
+        "Beispiel: set_detachment('Meine Votann', 'Oathband')")]
+    public string set_detachment(
+        [Description("Name der Army")] string army_name,
+        [Description("Detachment-Name, siehe list_detachments()")] string detachment)
+    {
+        if (!Armies.TryGetValue(army_name, out var army))
+            return $"Army '{army_name}' nicht gefunden.";
+
+        var detachmentAbility = repo.FindDetachment(army.FactionId, detachment);
+        if (detachmentAbility == null)
+            return $"Detachment '{detachment}' nicht gefunden für '{army.FactionName}'. " +
+                   $"Verfügbar: {string.Join(", ", repo.GetDetachmentNames(army.FactionId))}";
+
+        army.Detachment = detachmentAbility.Detachment;
+
+        return $"✅ Detachment **{army.Detachment}** für **{army_name}** gesetzt.\n\n" +
+               $"**{detachmentAbility.Name}:** {detachmentAbility.Description}";
     }
 
     // ── Tool: Einheit hinzufügen ──────────────────────────────────────────────
@@ -208,6 +250,76 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
                $"**{army.Name}:** {army.TotalPoints} / {army.PointsLimit} Punkte";
     }
 
+    // ── Tool: Enhancement anhängen ─────────────────────────────────────────────
+
+    [McpServerTool, Description(
+        "Hängt eine Enhancement an eine Einheit in der Army-Liste (max. 1 pro Einheit). " +
+        "Die Army braucht dafür ein gesetztes Detachment (siehe set_detachment/create_army). " +
+        "Die Punktekosten werden automatisch zum Army-Gesamtpunktestand addiert. " +
+        "Beispiel: add_enhancement('Meine Votann', 1, 'Voidstrider')")]
+    public string add_enhancement(
+        [Description("Name der Army")] string army_name,
+        [Description("Index der Einheit, die die Enhancement tragen soll (1-basiert, siehe show_army)")] int unit_index,
+        [Description("Name der Enhancement, siehe list_enhancements()")] string enhancement_name)
+    {
+        if (!Armies.TryGetValue(army_name, out var army))
+            return $"Army '{army_name}' nicht gefunden.";
+
+        if (string.IsNullOrEmpty(army.Detachment))
+            return $"Für '{army_name}' ist noch kein Detachment gesetzt. " +
+                   $"Nutze zuerst `set_detachment('{army_name}', 'Detachment-Name')`.";
+
+        if (unit_index < 1 || unit_index > army.Units.Count)
+            return $"Ungültiger Index {unit_index}. Die Army hat {army.Units.Count} Einheiten.";
+
+        var unit = army.Units[unit_index - 1];
+        if (!string.IsNullOrEmpty(unit.EnhancementName))
+            return $"**{unit.Name}** trägt bereits die Enhancement **{unit.EnhancementName}**. " +
+                   $"Erst mit `remove_enhancement('{army_name}', {unit_index})` entfernen.";
+
+        var enhancement = repo.FindEnhancement(army.FactionId, enhancement_name, army.Detachment);
+        if (enhancement == null)
+            return $"Enhancement '{enhancement_name}' nicht im Detachment '{army.Detachment}' gefunden. " +
+                   $"Siehe `list_enhancements('{army.FactionName}', detachment: '{army.Detachment}')`.";
+
+        unit.EnhancementName = enhancement.Name;
+        unit.EnhancementCost = enhancement.Cost;
+        unit.Points += enhancement.Cost;
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"✅ **{enhancement.Name}** ({enhancement.Cost} Punkte) an **{unit.Name}** angehängt.");
+        sb.AppendLine();
+        sb.AppendLine($"**{army.Name}:** {army.TotalPoints} / {army.PointsLimit} Punkte " +
+                      $"({army.PointsLimit - army.TotalPoints} verbleibend)");
+        return sb.ToString();
+    }
+
+    // ── Tool: Enhancement entfernen ────────────────────────────────────────────
+
+    [McpServerTool, Description("Entfernt die Enhancement einer Einheit in der Army-Liste (falls vorhanden).")]
+    public string remove_enhancement(
+        [Description("Name der Army")] string army_name,
+        [Description("Index der Einheit (1-basiert, siehe show_army)")] int unit_index)
+    {
+        if (!Armies.TryGetValue(army_name, out var army))
+            return $"Army '{army_name}' nicht gefunden.";
+
+        if (unit_index < 1 || unit_index > army.Units.Count)
+            return $"Ungültiger Index {unit_index}. Die Army hat {army.Units.Count} Einheiten.";
+
+        var unit = army.Units[unit_index - 1];
+        if (string.IsNullOrEmpty(unit.EnhancementName))
+            return $"**{unit.Name}** trägt keine Enhancement.";
+
+        var removedName = unit.EnhancementName;
+        unit.Points -= unit.EnhancementCost;
+        unit.EnhancementName = "";
+        unit.EnhancementCost = 0;
+
+        return $"✅ Enhancement **{removedName}** von **{unit.Name}** entfernt.\n\n" +
+               $"**{army.Name}:** {army.TotalPoints} / {army.PointsLimit} Punkte";
+    }
+
     // ── Tool: Army anzeigen ───────────────────────────────────────────────────
 
     [McpServerTool, Description(
@@ -222,6 +334,7 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
         var sb = new StringBuilder();
         sb.AppendLine($"# ⚒️ {army.Name}");
         sb.AppendLine($"**Fraktion:** {army.FactionName}  |  " +
+                      $"**Detachment:** {(string.IsNullOrEmpty(army.Detachment) ? "– (siehe set_detachment())" : army.Detachment)}  |  " +
                       $"**Punkte:** {army.TotalPoints} / {army.PointsLimit}");
         sb.AppendLine();
 
@@ -237,12 +350,15 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
             return sb.ToString();
         }
 
-        sb.AppendLine("| # | Einheit | Modelle | Punkte |");
-        sb.AppendLine("|---|---------|---------|--------|");
+        sb.AppendLine("| # | Einheit | Modelle | Punkte | Enhancement |");
+        sb.AppendLine("|---|---------|---------|--------|-------------|");
         for (int i = 0; i < army.Units.Count; i++)
         {
             var u = army.Units[i];
-            sb.AppendLine($"| {i + 1} | {u.Name} | {u.ModelCount} | {u.Points} |");
+            var enhancementCell = string.IsNullOrEmpty(u.EnhancementName)
+                ? "–"
+                : $"{u.EnhancementName} (+{u.EnhancementCost})";
+            sb.AppendLine($"| {i + 1} | {u.Name} | {u.ModelCount} | {u.Points} | {enhancementCell} |");
         }
 
         sb.AppendLine();

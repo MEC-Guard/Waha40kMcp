@@ -211,7 +211,75 @@ public class Waha40kTools(WahapediaRepository repo)
         return sb.ToString();
     }
 
-    // ── 5. Army Builder ───────────────────────────────────────────────────────
+    // ── 5. Detachments auflisten ───────────────────────────────────────────────
+
+    [McpServerTool, Description(
+        "Listet alle Detachments einer Fraktion mit ihrer Detachment-Fähigkeit auf. " +
+        "Beispiel: list_detachments('Adeptus Custodes')")]
+    public string list_detachments(
+        [Description("Fraktionsname, z.B. 'Space Marines', 'Adeptus Custodes'")] string faction)
+    {
+        var f = repo.FindFaction(faction);
+        if (f == null) return $"Fraktion '{faction}' nicht gefunden.";
+
+        var abilities = repo.GetDetachmentAbilities(f.Id).ToList();
+        if (abilities.Count == 0)
+            return $"Keine Detachments für '{f.Name}' gefunden.";
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"# {f.Name} — Detachments ({abilities.Count})");
+        sb.AppendLine();
+        foreach (var d in abilities)
+        {
+            sb.AppendLine($"## {d.Detachment}");
+            sb.AppendLine($"**{d.Name}**");
+            if (!string.IsNullOrEmpty(d.Legend))
+                sb.AppendLine($"> {d.Legend}");
+            sb.AppendLine();
+            sb.AppendLine(d.Description);
+            sb.AppendLine();
+            sb.AppendLine("---");
+        }
+        return sb.ToString();
+    }
+
+    // ── 6. Enhancements auflisten ──────────────────────────────────────────────
+
+    [McpServerTool, Description(
+        "Listet Enhancements (Ausrüstungs-Boni für Charaktere) einer Fraktion auf, " +
+        "optional nach Detachment gefiltert. Zeigt Punktekosten und Effekt. " +
+        "Beispiel: list_enhancements('Adeptus Custodes', detachment: 'Shield Host')")]
+    public string list_enhancements(
+        [Description("Fraktionsname, z.B. 'Space Marines'")] string faction,
+        [Description("Optional: nur Enhancements dieses Detachments")] string? detachment = null)
+    {
+        var f = repo.FindFaction(faction);
+        if (f == null) return $"Fraktion '{faction}' nicht gefunden.";
+
+        var enhancements = repo.SearchEnhancements(f.Id, detachment).ToList();
+        if (enhancements.Count == 0)
+            return $"Keine Enhancements für '{f.Name}'" +
+                   (detachment != null ? $" im Detachment '{detachment}'" : "") + " gefunden.";
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"# {f.Name} — Enhancements ({enhancements.Count})");
+        if (detachment != null) sb.AppendLine($"*Detachment: {detachment}*");
+        sb.AppendLine();
+        foreach (var e in enhancements)
+        {
+            sb.AppendLine($"## {e.Name} [{e.Cost} pts]");
+            sb.AppendLine($"*Detachment: {e.Detachment}*");
+            if (!string.IsNullOrEmpty(e.Legend))
+                sb.AppendLine($"> {e.Legend}");
+            sb.AppendLine();
+            sb.AppendLine(e.Description);
+            sb.AppendLine();
+            sb.AppendLine("---");
+        }
+        return sb.ToString();
+    }
+
+    // ── 7. Army Builder ───────────────────────────────────────────────────────
 
     [McpServerTool, Description(
         "Berechnet die Gesamtpunkte einer Army-Liste und prüft das Punktelimit. " +
@@ -267,7 +335,7 @@ public class Waha40kTools(WahapediaRepository repo)
         return sb.ToString();
     }
 
-    // ── 6. Einheiten vergleichen ──────────────────────────────────────────────
+    // ── 8. Einheiten vergleichen ──────────────────────────────────────────────
 
     [McpServerTool, Description(
         "Vergleicht zwei Einheiten hinsichtlich Stats und Waffen. " +

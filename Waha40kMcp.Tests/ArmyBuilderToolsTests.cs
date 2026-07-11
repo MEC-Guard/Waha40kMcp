@@ -42,6 +42,26 @@ public class ArmyBuilderToolsTests
         return ds;
     }
 
+    private static void AddDetachment(WahapediaRepository repo, string factionId, string detachmentName)
+    {
+        var id = Guid.NewGuid().ToString("N");
+        repo.DetachmentAbilities[id] = new DetachmentAbility
+        {
+            Id = id, FactionId = factionId, Detachment = detachmentName,
+            Name = "Test Ability", Description = "Test detachment ability description.",
+        };
+    }
+
+    private static void AddEnhancement(WahapediaRepository repo, string factionId, string detachmentName, string name, int cost)
+    {
+        var id = Guid.NewGuid().ToString("N");
+        repo.Enhancements[id] = new Enhancement
+        {
+            Id = id, FactionId = factionId, Detachment = detachmentName,
+            Name = name, Cost = cost, Description = "Test enhancement description.",
+        };
+    }
+
     [Fact]
     public void CreateArmy_ThenShowArmy_ReportsEmptyArmy()
     {
@@ -171,6 +191,163 @@ public class ArmyBuilderToolsTests
         fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000);
 
         var result = fx.Tools.remove_unit(fx.ArmyName, 99);
+
+        Assert.Contains("Ungültiger Index", result);
+    }
+
+    // ── Detachments & Enhancements ───────────────────────────────────────────
+
+    [Fact]
+    public void CreateArmy_WithValidDetachment_SetsDetachmentAndShowsInShowArmy()
+    {
+        var fx = MakeFixture();
+        AddDetachment(fx.Repo, fx.FactionId, "Oathband");
+
+        var created = fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000, detachment: "Oathband");
+        Assert.Contains("Oathband", created);
+
+        var shown = fx.Tools.show_army(fx.ArmyName);
+        Assert.Contains("Oathband", shown);
+    }
+
+    [Fact]
+    public void CreateArmy_WithUnknownDetachment_ReturnsErrorListingAvailable()
+    {
+        var fx = MakeFixture();
+        AddDetachment(fx.Repo, fx.FactionId, "Oathband");
+
+        var result = fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000, detachment: "Nonexistent");
+
+        Assert.Contains("nicht gefunden", result);
+        Assert.Contains("Oathband", result);
+    }
+
+    [Fact]
+    public void SetDetachment_ChangesArmyDetachment()
+    {
+        var fx = MakeFixture();
+        AddDetachment(fx.Repo, fx.FactionId, "Oathband");
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000);
+
+        var result = fx.Tools.set_detachment(fx.ArmyName, "Oathband");
+
+        Assert.Contains("Oathband", result);
+        var shown = fx.Tools.show_army(fx.ArmyName);
+        Assert.Contains("Oathband", shown);
+    }
+
+    [Fact]
+    public void SetDetachment_UnknownDetachment_ReturnsError()
+    {
+        var fx = MakeFixture();
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000);
+
+        var result = fx.Tools.set_detachment(fx.ArmyName, "Nonexistent");
+
+        Assert.Contains("nicht gefunden", result);
+    }
+
+    [Fact]
+    public async Task AddEnhancement_WithoutDetachmentSet_ReturnsError()
+    {
+        var fx = MakeFixture();
+        AddDatasheet(fx.Repo, fx.FactionId, "Einhyr Hearthguard", "ds1");
+        var slug = MfmScraper.GetSlugForFaction("Leagues of Votann")!;
+        fx.Scraper.SetUnitPoints(slug, "einhyr hearthguard", [new PointsCostEntry { Description = "5 models", Cost = 150 }]);
+
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000); // kein Detachment gesetzt
+        await fx.Tools.add_unit(fx.ArmyName, "Einhyr Hearthguard", 5);
+
+        var result = fx.Tools.add_enhancement(fx.ArmyName, 1, "Voidstrider");
+
+        Assert.Contains("kein Detachment", result);
+    }
+
+    [Fact]
+    public async Task AddEnhancement_AttachesToUnitAndAddsCostToTotal()
+    {
+        var fx = MakeFixture();
+        AddDetachment(fx.Repo, fx.FactionId, "Oathband");
+        AddEnhancement(fx.Repo, fx.FactionId, "Oathband", "Voidstrider", 15);
+        AddDatasheet(fx.Repo, fx.FactionId, "Einhyr Hearthguard", "ds1");
+        var slug = MfmScraper.GetSlugForFaction("Leagues of Votann")!;
+        fx.Scraper.SetUnitPoints(slug, "einhyr hearthguard", [new PointsCostEntry { Description = "5 models", Cost = 150 }]);
+
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000, detachment: "Oathband");
+        await fx.Tools.add_unit(fx.ArmyName, "Einhyr Hearthguard", 5);
+
+        var result = fx.Tools.add_enhancement(fx.ArmyName, 1, "Voidstrider");
+
+        Assert.Contains("Voidstrider", result);
+        var shown = fx.Tools.show_army(fx.ArmyName);
+        Assert.Contains("Voidstrider (+15)", shown);
+        Assert.Contains("165 / 2000", shown); // 150 Grundpreis + 15 Enhancement
+    }
+
+    [Fact]
+    public async Task AddEnhancement_SecondEnhancementOnSameUnit_IsRejected()
+    {
+        var fx = MakeFixture();
+        AddDetachment(fx.Repo, fx.FactionId, "Oathband");
+        AddEnhancement(fx.Repo, fx.FactionId, "Oathband", "Voidstrider", 15);
+        AddEnhancement(fx.Repo, fx.FactionId, "Oathband", "Second Enhancement", 20);
+        AddDatasheet(fx.Repo, fx.FactionId, "Einhyr Hearthguard", "ds1");
+        var slug = MfmScraper.GetSlugForFaction("Leagues of Votann")!;
+        fx.Scraper.SetUnitPoints(slug, "einhyr hearthguard", [new PointsCostEntry { Description = "5 models", Cost = 150 }]);
+
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000, detachment: "Oathband");
+        await fx.Tools.add_unit(fx.ArmyName, "Einhyr Hearthguard", 5);
+        fx.Tools.add_enhancement(fx.ArmyName, 1, "Voidstrider");
+
+        var result = fx.Tools.add_enhancement(fx.ArmyName, 1, "Second Enhancement");
+
+        Assert.Contains("bereits", result);
+    }
+
+    [Fact]
+    public async Task RemoveEnhancement_RemovesAndSubtractsCost()
+    {
+        var fx = MakeFixture();
+        AddDetachment(fx.Repo, fx.FactionId, "Oathband");
+        AddEnhancement(fx.Repo, fx.FactionId, "Oathband", "Voidstrider", 15);
+        AddDatasheet(fx.Repo, fx.FactionId, "Einhyr Hearthguard", "ds1");
+        var slug = MfmScraper.GetSlugForFaction("Leagues of Votann")!;
+        fx.Scraper.SetUnitPoints(slug, "einhyr hearthguard", [new PointsCostEntry { Description = "5 models", Cost = 150 }]);
+
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000, detachment: "Oathband");
+        await fx.Tools.add_unit(fx.ArmyName, "Einhyr Hearthguard", 5);
+        fx.Tools.add_enhancement(fx.ArmyName, 1, "Voidstrider");
+
+        var result = fx.Tools.remove_enhancement(fx.ArmyName, 1);
+
+        Assert.Contains("Voidstrider", result);
+        var shown = fx.Tools.show_army(fx.ArmyName);
+        Assert.Contains("150 / 2000", shown);
+    }
+
+    [Fact]
+    public async Task RemoveEnhancement_UnitWithoutEnhancement_ReturnsError()
+    {
+        var fx = MakeFixture();
+        AddDatasheet(fx.Repo, fx.FactionId, "Einhyr Hearthguard", "ds1");
+        var slug = MfmScraper.GetSlugForFaction("Leagues of Votann")!;
+        fx.Scraper.SetUnitPoints(slug, "einhyr hearthguard", [new PointsCostEntry { Description = "5 models", Cost = 150 }]);
+
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000);
+        await fx.Tools.add_unit(fx.ArmyName, "Einhyr Hearthguard", 5);
+
+        var result = fx.Tools.remove_enhancement(fx.ArmyName, 1);
+
+        Assert.Contains("keine Enhancement", result);
+    }
+
+    [Fact]
+    public void RemoveEnhancement_InvalidIndex_ReturnsError()
+    {
+        var fx = MakeFixture();
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000);
+
+        var result = fx.Tools.remove_enhancement(fx.ArmyName, 1);
 
         Assert.Contains("Ungültiger Index", result);
     }

@@ -33,6 +33,18 @@ public class Waha40kToolsTests
         ds2.PointsCosts.Add(new PointsCostEntry { Description = "1 model", Cost = 75 });
         repo.Datasheets[ds2.Id] = ds2;
 
+        repo.DetachmentAbilities["da1"] = new DetachmentAbility
+        {
+            Id = "da1", FactionId = "SM", Detachment = "Gladius Task Force",
+            Name = "Combat Doctrines", Description = "Grants bonuses depending on battle round.",
+        };
+
+        repo.Enhancements["e1"] = new Enhancement
+        {
+            Id = "e1", FactionId = "SM", Detachment = "Gladius Task Force",
+            Name = "Adept of the Codicium", Cost = 15, Description = "Grants a 4+ invulnerable save.",
+        };
+
         return (repo, new Waha40kTools(repo));
     }
 
@@ -136,5 +148,51 @@ public class Waha40kToolsTests
         var result = tools.list_factions();
 
         Assert.Contains("Space Marines", result);
+    }
+
+    [Fact]
+    public void ListDetachments_ReturnsAbilityText()
+    {
+        var (_, tools) = MakeFixture();
+
+        var result = tools.list_detachments("Space Marines");
+
+        Assert.Contains("Gladius Task Force", result);
+        Assert.Contains("Combat Doctrines", result);
+        Assert.Contains("Grants bonuses depending on battle round.", result);
+    }
+
+    [Fact]
+    public void ListDetachments_UnknownFaction_ReturnsNotFoundMessage()
+    {
+        var (_, tools) = MakeFixture();
+
+        var result = tools.list_detachments("Completely Unknown Faction Xyz");
+
+        Assert.Contains("nicht gefunden", result);
+    }
+
+    [Fact]
+    public void ListEnhancements_ReturnsCostAndDescription()
+    {
+        var (_, tools) = MakeFixture();
+
+        var result = tools.list_enhancements("Space Marines");
+
+        Assert.Contains("Adept of the Codicium", result);
+        Assert.Contains("15", result);
+        Assert.Contains("Grants a 4+ invulnerable save.", result);
+    }
+
+    [Fact]
+    public void ListEnhancements_FiltersByDetachment()
+    {
+        var (_, tools) = MakeFixture();
+
+        var matching = tools.list_enhancements("Space Marines", "Gladius Task Force");
+        var nonMatching = tools.list_enhancements("Space Marines", "Firestorm Assault Force");
+
+        Assert.Contains("Adept of the Codicium", matching);
+        Assert.Contains("Keine Enhancements", nonMatching);
     }
 }

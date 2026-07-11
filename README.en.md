@@ -8,7 +8,7 @@ An [MCP](https://modelcontextprotocol.io) (Model Context Protocol) server for Wa
 
 *Powered by Wahapedia — not affiliated with Games Workshop or Wahapedia.*
 
-The server exposes **20 tools** across four areas:
+The server exposes **25 tools** across four areas:
 
 - 📖 **Database lookups** — datasheets, factions, stratagems, unit comparison
 - ⚔️ **MathHammer / combat calculator** — expected-value and Monte Carlo damage calculation with automatic ability detection
@@ -134,6 +134,8 @@ Direct queries against the Wahapedia database (datasheets, factions, stratagems)
 | `list_faction_units` | `faction`, `keyword_filter?` | Lists all units of a faction, optionally filtered by keyword (e.g. `Infantry`, `Vehicle`, `Character`). |
 | `search_stratagems` | `faction`, `query?`, `phase?`, `detachment?` | Searches a faction's stratagems, optionally filtered by text, phase (`Shooting`, `Fight`, `Movement`, `Command`) or detachment. |
 | `list_factions` | – | Lists all available factions with their internal ID. |
+| `list_detachments` | `faction` | Lists all detachments of a faction with their detachment ability (full rules text). |
+| `list_enhancements` | `faction`, `detachment?` | Lists enhancements (equipment bonuses for characters) of a faction with points cost and effect, optionally filtered by detachment. |
 | `calculate_army_points` | `unit_names`, `faction`, `points_limit=2000` | Calculates the total points of a comma-separated list of unit names and checks the points limit. |
 | `compare_units` | `unit_a`, `unit_b` | Compares two units side by side (stats + points). |
 
@@ -150,6 +152,7 @@ Automatically reads weapon keywords **and** datasheet abilities (re-rolls, Feel 
 - **Blast** — `defender_models` sets the target unit's model count; 6-10 models automatically adds +1 Attack, 11+ models adds +3 Attacks (10th edition core rule).
 - **Benefit of Cover** — `defender_cover: true` treats AP -1 weapons as AP 0 (does not affect AP -2 or worse, per the rules).
 - **Non-standard critical thresholds** — ability text such as "Critical Hits on a 5+" is detected automatically and factored into the Sustained Hits / Lethal Hits / Devastating Wounds math.
+- **Detachment abilities & enhancements** — `attacker_detachment?`/`defender_detachment?` and `attacker_enhancement?`/`defender_enhancement?` fold a detachment's ability or a carried enhancement (e.g. "4+ invulnerable save") into the calculation, just like datasheet abilities. See `list_detachments()`/`list_enhancements()` for valid names.
 
 Example:
 ```
@@ -162,10 +165,13 @@ Manages in-memory army lists and automatically loads points costs from the offic
 
 | Tool | Parameters | Description |
 |------|-----------|--------------|
-| `create_army` | `army_name`, `faction`, `points_limit=2000` | Creates a new army list. |
+| `create_army` | `army_name`, `faction`, `points_limit=2000`, `detachment?` | Creates a new army list, optionally with a detachment right away (see `list_detachments()`). |
+| `set_detachment` | `army_name`, `detachment` | Sets or changes an army's detachment. Required for `add_enhancement`. |
 | `add_unit` | `army_name`, `unit_name`, `model_count=0` | Adds a unit; automatically loads the matching points cost from the MFM (including copy-tier pricing by model count). |
 | `remove_unit` | `army_name`, `unit_index` | Removes a unit by index (1-based, see `show_army`). |
-| `show_army` | `army_name` | Shows the current list with all units, points, and a progress bar toward the points limit. |
+| `add_enhancement` | `army_name`, `unit_index`, `enhancement_name` | Attaches an enhancement to a unit (max. 1 per unit); its points cost is automatically added to the army total. |
+| `remove_enhancement` | `army_name`, `unit_index` | Removes a unit's enhancement again. |
+| `show_army` | `army_name` | Shows the current list with all units, enhancements, points, and a progress bar toward the points limit. |
 | `list_armies` | – | Lists all armies saved in this server session. |
 | `refresh_mfm_points` | `faction` | Clears a faction's points cache and reloads fresh from the MFM — use when Games Workshop has published new points. |
 | `get_wargear_options` | `unit_name`, `faction?` | Shows wargear points surcharges for a unit (e.g. "per Storm Shield: +5 points per model"), on top of the base cost. |
@@ -194,6 +200,8 @@ A local, permanently stored knowledge base for tactical tips that Claude **parap
 - *"How much damage does a squad of 5 Einhyr Hearthguard do to Deathshroud Terminators at range?"*
 - *"Simulate 10,000 runs: Wolf Guard Terminators in melee against Necron Warriors"*
 - *"Create a 2000-point list for Leagues of Votann and add 10 Hernkyn Yaegirs"*
+- *"What detachments does Adeptus Custodes have and what do they do?"*
+- *"Show me the enhancements in the Shield Host detachment"*
 - *"Research current tactics for Leagues of Votann against Space Marines"*
 - *"What have I already noted about deployment tips?"*
 
