@@ -121,6 +121,16 @@ public class CombatCalculator(WahapediaRepository repo)
             // Damage reduction
             if (Regex.IsMatch(text, @"reduc.{0,30}damage.{0,10}by 1", RegexOptions.IgnoreCase))
                 a.DamageReduction = 1;
+
+            // Kritischer Treffer/Wunde schon ab niedrigerer Zahl als der Standard-6
+            // (z.B. "Critical Hits on a 5+", "Critical Hits and Critical Wounds happen on a 5+")
+            var critHitMatch = Regex.Match(text, @"critical hits?.{0,60}(\d)\+", RegexOptions.IgnoreCase);
+            if (critHitMatch.Success)
+                a.CritHitThreshold = Math.Min(a.CritHitThreshold, int.Parse(critHitMatch.Groups[1].Value));
+
+            var critWoundMatch = Regex.Match(text, @"critical wounds?.{0,60}(\d)\+", RegexOptions.IgnoreCase);
+            if (critWoundMatch.Success)
+                a.CritWoundThreshold = Math.Min(a.CritWoundThreshold, int.Parse(critWoundMatch.Groups[1].Value));
         }
 
         return a;
@@ -204,7 +214,9 @@ public class CombatCalculator(WahapediaRepository repo)
         [Description("Name des Leaders der den Angreifer führt (optional), z.B. 'Kâhl'")] string? attacker_leader = null,
         [Description("Name des Leaders der den Verteidiger führt (optional), z.B. 'Lord of Contagion'")] string? defender_leader = null,
         [Description("Name des Support-Charakters beim Angreifer (optional), z.B. 'Apothecary'")] string? attacker_support = null,
-        [Description("Name des Support-Charakters beim Verteidiger (optional), z.B. 'Painboy'")] string? defender_support = null)
+        [Description("Name des Support-Charakters beim Verteidiger (optional), z.B. 'Painboy'")] string? defender_support = null,
+        [Description("Anzahl Modelle im Verteidiger-Trupp (relevant für BLAST-Waffen: +1 Attacke bei 6-10, +3 bei 11+ Modellen)")] int defender_models = 5,
+        [Description("Hat der Verteidiger Benefit of Cover? Waffen mit AP -1 werden dadurch zu AP 0 (gilt nicht für AP -2 oder schlechter)")] bool defender_cover = false)
     {
         var attackerDs = repo.SearchDatasheets(attacker_name, attacker_faction).FirstOrDefault();
         var defenderDs = repo.SearchDatasheets(defender_name, defender_faction).FirstOrDefault();
@@ -299,8 +311,9 @@ public class CombatCalculator(WahapediaRepository repo)
         sb.AppendLine("## Verteidiger Stats");
         sb.AppendLine($"**T:** {defT}  **SV:** {defModel.Sv}  " +
                       $"**InvSv:** {(defInv > 0 ? defInv + "+" : "–")}  " +
-                      $"**W:** {defW}" +
-                      (defFnp > 0 ? $"  **FNP:** {defFnp}+" : ""));
+                      $"**W:** {defW}  **Modelle:** {defender_models}" +
+                      (defFnp > 0 ? $"  **FNP:** {defFnp}+" : "") +
+                      (defender_cover ? "  **🛡️ Benefit of Cover**" : ""));
         sb.AppendLine();
 
         // Erkannte Fähigkeiten ausgeben
@@ -333,7 +346,7 @@ public class CombatCalculator(WahapediaRepository repo)
         {
             var result = CalculateWeapon(
                 weapon, attacker_models,
-                defT, defSv, defInv, defW, defFnp,
+                defT, defSv, defInv, defW, defFnp, defender_models, defender_cover,
                 attackerAbilities, defenderAbilities);
 
             sb.AppendLine($"### {weapon.Name}");
@@ -396,6 +409,8 @@ public class CombatCalculator(WahapediaRepository repo)
         [Description("Name des Leaders der den Verteidiger führt (optional)")] string? defender_leader = null,
         [Description("Name des Support-Charakters beim Angreifer (optional), z.B. 'Apothecary'")] string? attacker_support = null,
         [Description("Name des Support-Charakters beim Verteidiger (optional), z.B. 'Painboy'")] string? defender_support = null,
+        [Description("Anzahl Modelle im Verteidiger-Trupp (relevant für BLAST-Waffen: +1 Attacke bei 6-10, +3 bei 11+ Modellen)")] int defender_models = 5,
+        [Description("Hat der Verteidiger Benefit of Cover? Waffen mit AP -1 werden dadurch zu AP 0 (gilt nicht für AP -2 oder schlechter)")] bool defender_cover = false,
         [Description("Anzahl simulierter Durchläufe (Standard 10000, mehr = genauer aber langsamer)")] int iterations = 10000)
     {
         var attackerDs = repo.SearchDatasheets(attacker_name, attacker_faction).FirstOrDefault();
@@ -491,7 +506,7 @@ public class CombatCalculator(WahapediaRepository repo)
             foreach (var weapon in weapons)
             {
                 var simResult = SimulateWeapon(weapon, attacker_models, defT, defSv, defInv, defFnp,
-                    attackerAbilities, defenderAbilities, rng);
+                    defender_models, defender_cover, attackerAbilities, defenderAbilities, rng);
 
                 totalDamageThisRun += simResult;
 
@@ -554,8 +569,9 @@ public class CombatCalculator(WahapediaRepository repo)
         sb.AppendLine("## Verteidiger Stats");
         sb.AppendLine($"**T:** {defT}  **SV:** {defModel.Sv}  " +
                       $"**InvSv:** {(defInv > 0 ? defInv + "+" : "–")}  " +
-                      $"**W:** {defW}" +
-                      (defFnp > 0 ? $"  **FNP:** {defFnp}+" : ""));
+                      $"**W:** {defW}  **Modelle:** {defender_models}" +
+                      (defFnp > 0 ? $"  **FNP:** {defFnp}+" : "") +
+                      (defender_cover ? "  **🛡️ Benefit of Cover**" : ""));
         sb.AppendLine();
 
         sb.AppendLine("## 📊 Ergebnisverteilung über alle Durchläufe");
@@ -598,7 +614,7 @@ public class CombatCalculator(WahapediaRepository repo)
     /// <summary>Simuliert eine Waffe für EINEN Durchlauf mit echtem Würfeln (W6 pro Attacke/Wund/Save).</summary>
     internal static double SimulateWeapon(
         DatasheetWeapon weapon, int models,
-        int defT, int defSv, int defInv, int defFnp,
+        int defT, int defSv, int defInv, int defFnp, int defenderModels, bool defenderCover,
         CombatAbilities attacker, CombatAbilities defender, Random rng)
     {
         bool isTorrent    = weapon.Keywords.Contains("TORRENT", StringComparison.OrdinalIgnoreCase);
@@ -609,12 +625,15 @@ public class CombatCalculator(WahapediaRepository repo)
         if (sustainedCount == 0) sustainedCount = 1;
         bool isDevWounds  = attacker.DevastatingWounds || weapon.Keywords.Contains("DEVASTATING WOUNDS", StringComparison.OrdinalIgnoreCase);
         bool isTwinLinked = weapon.Keywords.Contains("TWIN-LINKED", StringComparison.OrdinalIgnoreCase);
+        bool isBlast      = weapon.Keywords.Contains("BLAST", StringComparison.OrdinalIgnoreCase);
 
         int attacksPerModel = (int)Math.Round(RollDice(weapon.A, rng));
-        int totalAttacks = attacksPerModel * models;
+        int totalAttacks = attacksPerModel * models + BlastBonusAttacks(isBlast, defenderModels);
 
         int weaponS  = int.TryParse(weapon.S, out var s) ? s : 4;
         int weaponAp = int.TryParse(weapon.Ap, out var apRaw) ? Math.Abs(apRaw) : 0;
+        // Benefit of Cover: eine Attacke mit AP -1 wird dadurch zu AP 0 (nicht bei AP -2 oder schlechter).
+        if (defenderCover && weaponAp == 1) weaponAp = 0;
         int bsWs = ParseSave(weapon.BsWs);
 
         int hits = 0;
@@ -634,7 +653,7 @@ public class CombatCalculator(WahapediaRepository repo)
             bool isHit = isTorrent || roll >= Math.Min(effectiveBs, 6);
             if (!isHit) continue;
 
-            bool isCrit = roll == 6;
+            bool isCrit = roll >= attacker.CritHitThreshold;
 
             if (isCrit && isSustained)
                 hits += sustainedCount; // Sustained Hits: extra Treffer statt Wundwurf
@@ -665,7 +684,7 @@ public class CombatCalculator(WahapediaRepository repo)
                     if (wRoll < woundTarget) wRoll = RollD6(rng);
                 }
                 if (wRoll < woundTarget) return; // Wundwurf fehlgeschlagen
-                isCritWound = wRoll == 6;
+                isCritWound = wRoll >= attacker.CritWoundThreshold;
             }
 
             if (isCritWound && isDevWounds)
@@ -717,6 +736,18 @@ public class CombatCalculator(WahapediaRepository repo)
         return survived;
     }
 
+    /// <summary>
+    /// BLAST: erhöht die Attacken-Charakteristik einmalig (nicht pro Modell) um +1 bei 6-10
+    /// Modellen im Zieltrupp bzw. +3 bei 11+ Modellen (10th-Edition-Kernregel).
+    /// </summary>
+    private static int BlastBonusAttacks(bool isBlast, int defenderModels)
+    {
+        if (!isBlast) return 0;
+        if (defenderModels >= 11) return 3;
+        if (defenderModels >= 6) return 1;
+        return 0;
+    }
+
     private static int WoundTarget(int s, int t)
     {
         if (s >= t * 2) return 2;
@@ -752,7 +783,7 @@ public class CombatCalculator(WahapediaRepository repo)
 
     internal static WeaponResult CalculateWeapon(
         DatasheetWeapon weapon, int models,
-        int defT, int defSv, int defInv, int defW, int defFnp,
+        int defT, int defSv, int defInv, int defW, int defFnp, int defenderModels, bool defenderCover,
         CombatAbilities attacker, CombatAbilities defender)
     {
         bool isTorrent       = weapon.Keywords.Contains("TORRENT", StringComparison.OrdinalIgnoreCase);
@@ -763,12 +794,15 @@ public class CombatCalculator(WahapediaRepository repo)
         if (sustainedCount == 0) sustainedCount = 1;
         bool isDevWounds     = attacker.DevastatingWounds || weapon.Keywords.Contains("DEVASTATING WOUNDS", StringComparison.OrdinalIgnoreCase);
         bool isTwinLinked    = weapon.Keywords.Contains("TWIN-LINKED", StringComparison.OrdinalIgnoreCase);
+        bool isBlast         = weapon.Keywords.Contains("BLAST", StringComparison.OrdinalIgnoreCase);
 
         double attacksPerModel = ParseDice(weapon.A);
-        double totalAttacks    = attacksPerModel * models;
+        double totalAttacks    = attacksPerModel * models + BlastBonusAttacks(isBlast, defenderModels);
 
         int weaponS  = int.TryParse(weapon.S, out var s) ? s : 4;
         int weaponAp = int.TryParse(weapon.Ap, out var apRaw) ? Math.Abs(apRaw) : 0;
+        // Benefit of Cover: eine Attacke mit AP -1 wird dadurch zu AP 0 (nicht bei AP -2 oder schlechter).
+        if (defenderCover && weaponAp == 1) weaponAp = 0;
         double avgDmg = ParseDice(weapon.D);
         if (defender.DamageReduction > 0)
             avgDmg = Math.Max(1, avgDmg - defender.DamageReduction);
@@ -798,7 +832,7 @@ public class CombatCalculator(WahapediaRepository repo)
                 hitChance = rawHitChance + (1.0 / 6.0) * rawHitChance;
         }
 
-        double critChance    = 1.0 / 6.0;
+        double critChance    = (7.0 - attacker.CritHitThreshold) / 6.0;
         double critHits      = totalAttacks * critChance;
         double normalHits    = totalAttacks * (hitChance - critChance);
 
@@ -817,7 +851,7 @@ public class CombatCalculator(WahapediaRepository repo)
         else if (attacker.RerollWoundsOf1)
             woundChance = woundChance + (1.0 / 6.0) * woundChance;
 
-        double critWoundChance = 1.0 / 6.0;
+        double critWoundChance = (7.0 - attacker.CritWoundThreshold) / 6.0;
         double critWounds      = hitsToWound * critWoundChance;
         double normalWounds    = hitsToWound * (woundChance - critWoundChance);
         double totalWounds     = lethalWounds + critWounds + normalWounds;
@@ -885,6 +919,11 @@ public class CombatAbilities
     public int  AdditionalInvSave  { get; set; }
     public int  DamageReduction    { get; set; }
 
+    // Standard-Schwelle für kritische Treffer/Wunden ist 6 (unmodifizierte 6).
+    // Manche Einheiten/Waffen senken das ab (z.B. "Critical Hits on a 5+").
+    public int  CritHitThreshold   { get; set; } = 6;
+    public int  CritWoundThreshold { get; set; } = 6;
+
     public List<string> GetSummary()
     {
         var result = new List<string>();
@@ -895,6 +934,8 @@ public class CombatAbilities
         if (RerollHitsOf1)         result.Add("🎲 Re-roll Treffer von 1");
         if (RerollAllWounds)       result.Add("🎲 Re-roll alle Wunden");
         if (RerollWoundsOf1)       result.Add("🎲 Re-roll Wunden von 1");
+        if (CritHitThreshold < 6)   result.Add($"💥 Kritischer Treffer bereits ab {CritHitThreshold}+");
+        if (CritWoundThreshold < 6) result.Add($"💥 Kritische Wunde bereits ab {CritWoundThreshold}+");
         return result;
     }
 
@@ -921,5 +962,7 @@ public class CombatAbilities
         if (other.FnpValue > 0)          FnpValue = FnpValue == 0 ? other.FnpValue : Math.Min(FnpValue, other.FnpValue);
         if (other.AdditionalInvSave > 0) AdditionalInvSave = AdditionalInvSave == 0 ? other.AdditionalInvSave : Math.Min(AdditionalInvSave, other.AdditionalInvSave);
         if (other.DamageReduction > 0)   DamageReduction = Math.Max(DamageReduction, other.DamageReduction);
+        CritHitThreshold   = Math.Min(CritHitThreshold, other.CritHitThreshold);
+        CritWoundThreshold = Math.Min(CritWoundThreshold, other.CritWoundThreshold);
     }
 }

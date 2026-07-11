@@ -137,12 +137,17 @@ Direct queries against the Wahapedia database (datasheets, factions, stratagems)
 
 ### 2. MathHammer / combat calculator (`CombatCalculator`)
 
-Automatically reads weapon keywords **and** datasheet abilities (re-rolls, Feel No Pain, Lethal Hits, Sustained Hits, Devastating Wounds, Stealth/-1 to hit, additional invulnerable saves, damage reduction) and supports a Leader **and** a support character (e.g. Apothecary/Painboy) on each side simultaneously.
+Automatically reads weapon keywords **and** datasheet abilities (re-rolls, Feel No Pain, Lethal Hits, Sustained Hits, Devastating Wounds, Stealth/-1 to hit, additional invulnerable saves, damage reduction, Blast, non-standard critical thresholds) and supports a Leader **and** a support character (e.g. Apothecary/Painboy) on each side simultaneously.
 
 | Tool | Parameters | Description |
 |------|-----------|--------------|
-| `calculate_combat` | `attacker_name`, `defender_name`, `mode='ranged'\|'melee'`, `attacker_faction?`, `defender_faction?`, `attacker_models=5`, `weapons_filter?`, `attacker_leader?`, `defender_leader?`, `attacker_support?`, `defender_support?` | Calculates the **average damage** (expected value) per weapon and in total: hit, wound, save, and damage probabilities, models killed. |
+| `calculate_combat` | `attacker_name`, `defender_name`, `mode='ranged'\|'melee'`, `attacker_faction?`, `defender_faction?`, `attacker_models=5`, `weapons_filter?`, `attacker_leader?`, `defender_leader?`, `attacker_support?`, `defender_support?`, `defender_models=5`, `defender_cover=false` | Calculates the **average damage** (expected value) per weapon and in total: hit, wound, save, and damage probabilities, models killed. |
 | `simulate_combat` | same as above, plus `iterations=10000` | **Monte Carlo simulation** with actual dice rolls instead of a pure expected value: shows median, 10th/90th percentile, min/max, probability of killing 0 models, and a text histogram of the result distribution. More realistic than `calculate_combat` for tabletop decisions, since it reveals dice-luck variance. |
+
+**Also supports:**
+- **Blast** — `defender_models` sets the target unit's model count; 6-10 models automatically adds +1 Attack, 11+ models adds +3 Attacks (10th edition core rule).
+- **Benefit of Cover** — `defender_cover: true` treats AP -1 weapons as AP 0 (does not affect AP -2 or worse, per the rules).
+- **Non-standard critical thresholds** — ability text such as "Critical Hits on a 5+" is detected automatically and factored into the Sustained Hits / Lethal Hits / Devastating Wounds math.
 
 Example:
 ```

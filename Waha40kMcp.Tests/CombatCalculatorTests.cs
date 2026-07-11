@@ -217,10 +217,10 @@ public class CombatCalculatorTests
         var attacker = new CombatAbilities();
         var defender = new CombatAbilities();
 
-        // 5 Angreifer-Modelle, Verteidiger: T4, Sv3+, kein Invuln, W1, kein FNP
+        // 5 Angreifer-Modelle, Verteidiger: T4, Sv3+, kein Invuln, W1, kein FNP, 5 Modelle, kein Cover
         var result = CombatCalculator.CalculateWeapon(
             weapon, models: 5,
-            defT: 4, defSv: 3, defInv: 0, defW: 1, defFnp: 0,
+            defT: 4, defSv: 3, defInv: 0, defW: 1, defFnp: 0, defenderModels: 5, defenderCover: false,
             attacker, defender);
 
         Assert.Equal(10, result.TotalAttacks, 3);
@@ -248,8 +248,8 @@ public class CombatCalculatorTests
         var attacker = new CombatAbilities();
         var defender = new CombatAbilities();
 
-        var baseline = CombatCalculator.CalculateWeapon(weaponWithoutSustained, 1, 4, 3, 0, 1, 0, attacker, defender);
-        var withSustained = CombatCalculator.CalculateWeapon(weaponWithSustained2, 1, 4, 3, 0, 1, 0, attacker, defender);
+        var baseline = CombatCalculator.CalculateWeapon(weaponWithoutSustained, 1, 4, 3, 0, 1, 0, 5, false, attacker, defender);
+        var withSustained = CombatCalculator.CalculateWeapon(weaponWithSustained2, 1, 4, 3, 0, 1, 0, 5, false, attacker, defender);
 
         // Ohne Sustained Hits: AvgHits == totalAttacks * hitChance.
         // Mit Sustained Hits 2: jeder Crit (1/6 der Attacken) zählt als 2 zusätzliche Treffer statt 1 Wundwurf.
@@ -258,5 +258,149 @@ public class CombatCalculatorTests
         double critHits = 10 * (1.0 / 6.0);
         double expectedAvgHits = baseline.AvgHits + critHits * 2; // +2 statt +1 pro Crit
         Assert.Equal(expectedAvgHits, withSustained.AvgHits, 3);
+    }
+
+    // ── BLAST ────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(5, 0)]   // unter 6 Modellen: kein Bonus
+    [InlineData(6, 1)]   // 6-10 Modelle: +1 Attacke
+    [InlineData(10, 1)]
+    [InlineData(11, 3)]  // 11+ Modelle: +3 Attacken
+    [InlineData(20, 3)]
+    public void CalculateWeapon_Blast_AddsAttacksBasedOnDefenderModelCount(int defenderModels, int expectedBonus)
+    {
+        var weapon = new DatasheetWeapon
+        {
+            Name = "Frag Missile", Type = "ranged",
+            A = "3", BsWs = "3+", S = "4", Ap = "0", D = "1", Keywords = "Blast",
+        };
+        var noAbilities = new CombatAbilities();
+
+        var result = CombatCalculator.CalculateWeapon(
+            weapon, models: 1,
+            defT: 4, defSv: 3, defInv: 0, defW: 1, defFnp: 0, defenderModels: defenderModels, defenderCover: false,
+            noAbilities, noAbilities);
+
+        Assert.Equal(3 + expectedBonus, result.TotalAttacks, 3);
+    }
+
+    [Fact]
+    public void CalculateWeapon_NonBlastWeapon_IgnoresDefenderModelCount()
+    {
+        var weapon = new DatasheetWeapon
+        {
+            Name = "Bolt Rifle", Type = "ranged",
+            A = "2", BsWs = "3+", S = "4", Ap = "0", D = "1", Keywords = "",
+        };
+        var noAbilities = new CombatAbilities();
+
+        var vs5 = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, false, noAbilities, noAbilities);
+        var vs20 = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 20, false, noAbilities, noAbilities);
+
+        Assert.Equal(vs5.TotalAttacks, vs20.TotalAttacks, 3);
+    }
+
+    // ── Benefit of Cover ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void CalculateWeapon_Cover_NeutralizesApMinus1()
+    {
+        var weapon = new DatasheetWeapon
+        {
+            Name = "Bolt Rifle", Type = "ranged",
+            A = "10", BsWs = "3+", S = "4", Ap = "-1", D = "1", Keywords = "",
+        };
+        var noAbilities = new CombatAbilities();
+
+        var withoutCover = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, defenderCover: false, noAbilities, noAbilities);
+        var withCover = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, defenderCover: true, noAbilities, noAbilities);
+
+        // Mit Cover wird AP-1 zu AP0 -> besserer Save -> weniger fehlgeschlagene Saves -> weniger Schaden.
+        Assert.True(withCover.AvgFailedSaves < withoutCover.AvgFailedSaves);
+    }
+
+    [Fact]
+    public void CalculateWeapon_Cover_DoesNotAffectApMinus2OrWorse()
+    {
+        var weapon = new DatasheetWeapon
+        {
+            Name = "Plasma Gun", Type = "ranged",
+            A = "10", BsWs = "3+", S = "7", Ap = "-2", D = "1", Keywords = "",
+        };
+        var noAbilities = new CombatAbilities();
+
+        var withoutCover = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, defenderCover: false, noAbilities, noAbilities);
+        var withCover = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, defenderCover: true, noAbilities, noAbilities);
+
+        Assert.Equal(withoutCover.AvgFailedSaves, withCover.AvgFailedSaves, 5);
+    }
+
+    // ── Kritische Treffer/Wunden ab abweichender Schwelle ───────────────────
+
+    [Fact]
+    public void ParseAbilities_DetectsLoweredCriticalHitThreshold()
+    {
+        var ds = WithAbility("Critical Hits for this weapon are scored on a 5+ instead of a 6.");
+        var abilities = CombatCalculator.ParseAbilities(ds);
+        Assert.Equal(5, abilities.CritHitThreshold);
+    }
+
+    [Fact]
+    public void ParseAbilities_DetectsLoweredCriticalWoundThreshold()
+    {
+        var ds = WithAbility("Critical Wounds for this weapon are scored on a 5+ instead of a 6.");
+        var abilities = CombatCalculator.ParseAbilities(ds);
+        Assert.Equal(5, abilities.CritWoundThreshold);
+    }
+
+    [Fact]
+    public void CalculateWeapon_LethalHitsWithLoweredCritThreshold_WoundsMoreThanDefaultThreshold()
+    {
+        var weapon = new DatasheetWeapon
+        {
+            Name = "Test Weapon", Type = "ranged",
+            A = "20", BsWs = "3+", S = "4", Ap = "0", D = "1", Keywords = "",
+        };
+        var defender = new CombatAbilities();
+        var defaultThreshold = new CombatAbilities { LethalHits = true };
+        var loweredThreshold = new CombatAbilities { LethalHits = true, CritHitThreshold = 5 };
+
+        var resultDefault = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, false, defaultThreshold, defender);
+        var resultLowered = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, false, loweredThreshold, defender);
+
+        // Mehr Crits -> mehr automatische Wunden (Lethal Hits) statt unsicherer Wundwürfe -> mehr Gesamtwunden.
+        Assert.True(resultLowered.AvgWounds > resultDefault.AvgWounds);
+    }
+
+    [Fact]
+    public void CalculateWeapon_DevastatingWoundsWithLoweredCritThreshold_DealsMoreDamageThanDefaultThreshold()
+    {
+        var weapon = new DatasheetWeapon
+        {
+            Name = "Test Weapon", Type = "ranged",
+            A = "20", BsWs = "3+", S = "4", Ap = "0", D = "1", Keywords = "",
+        };
+        var defender = new CombatAbilities();
+        var defaultThreshold = new CombatAbilities { DevastatingWounds = true };
+        var loweredThreshold = new CombatAbilities { DevastatingWounds = true, CritWoundThreshold = 5 };
+
+        var resultDefault = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, false, defaultThreshold, defender);
+        var resultLowered = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, false, loweredThreshold, defender);
+
+        // Mehr kritische Wunden -> mehr Mortal Wounds die Saves umgehen -> mehr Schaden.
+        Assert.True(resultLowered.AvgDamage > resultDefault.AvgDamage);
+    }
+
+    [Fact]
+    public void MergeWith_TakesLowerCritThresholds()
+    {
+        var unit = new CombatAbilities { CritHitThreshold = 6, CritWoundThreshold = 6 };
+        var leader = new CombatAbilities { CritHitThreshold = 5, CritWoundThreshold = 6 };
+
+        unit.MergeWith(leader);
+
+        Assert.Equal(5, unit.CritHitThreshold);
+        Assert.Equal(6, unit.CritWoundThreshold);
     }
 }

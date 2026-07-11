@@ -137,12 +137,17 @@ Direkte Abfragen der Wahapedia-Datenbank (Datasheets, Fraktionen, Stratagems). L
 
 ### 2. MathHammer / Combat-Rechner (`CombatCalculator`)
 
-Liest Waffen-Keywords **und** Datasheet-Fähigkeiten automatisch aus (Re-rolls, Feel No Pain, Lethal Hits, Sustained Hits, Devastating Wounds, Stealth/-1 to hit, zusätzliche Invulnerable Saves, Schadensreduzierung) und unterstützt gleichzeitig einen Leader **und** einen Support-Charakter (z.B. Apothecary/Painboy) pro Seite.
+Liest Waffen-Keywords **und** Datasheet-Fähigkeiten automatisch aus (Re-rolls, Feel No Pain, Lethal Hits, Sustained Hits, Devastating Wounds, Stealth/-1 to hit, zusätzliche Invulnerable Saves, Schadensreduzierung, Blast, abweichende Crit-Schwellen) und unterstützt gleichzeitig einen Leader **und** einen Support-Charakter (z.B. Apothecary/Painboy) pro Seite.
 
 | Tool | Parameter | Beschreibung |
 |------|-----------|--------------|
-| `calculate_combat` | `attacker_name`, `defender_name`, `mode='ranged'\|'melee'`, `attacker_faction?`, `defender_faction?`, `attacker_models=5`, `weapons_filter?`, `attacker_leader?`, `defender_leader?`, `attacker_support?`, `defender_support?` | Berechnet den **Durchschnittsschaden** (Erwartungswert) pro Waffe und in Summe: Treffer-, Wund-, Save- und Schadenswahrscheinlichkeiten, getötete Modelle. |
+| `calculate_combat` | `attacker_name`, `defender_name`, `mode='ranged'\|'melee'`, `attacker_faction?`, `defender_faction?`, `attacker_models=5`, `weapons_filter?`, `attacker_leader?`, `defender_leader?`, `attacker_support?`, `defender_support?`, `defender_models=5`, `defender_cover=false` | Berechnet den **Durchschnittsschaden** (Erwartungswert) pro Waffe und in Summe: Treffer-, Wund-, Save- und Schadenswahrscheinlichkeiten, getötete Modelle. |
 | `simulate_combat` | wie oben, zusätzlich `iterations=10000` | **Monte-Carlo-Simulation** mit echten Würfelwürfen statt reinem Erwartungswert: zeigt Median, 10./90. Perzentil, Min/Max, Wahrscheinlichkeit für 0 getötete Modelle und ein Text-Histogramm der Ergebnisverteilung. Realistischer als `calculate_combat` für Entscheidungen am Spieltisch, da Würfelglück-Streuung sichtbar wird. |
+
+**Zusätzlich unterstützte Mechaniken:**
+- **Blast** — `defender_models` gibt die Modellanzahl im Ziel-Trupp an; bei 6-10 Modellen gibt's automatisch +1 Attacke, bei 11+ Modellen +3 Attacken (10th-Edition-Kernregel).
+- **Benefit of Cover** — `defender_cover: true` setzt Waffen mit AP -1 automatisch auf AP 0 (wirkt sich nicht auf AP -2 oder schlechter aus, wie in den Regeln vorgesehen).
+- **Abweichende Crit-Schwellen** — Fähigkeitstexte wie „Critical Hits on a 5+" werden automatisch erkannt und gehen in die Sustained-Hits-/Lethal-Hits-/Devastating-Wounds-Rechnung ein.
 
 Beispiel:
 ```
