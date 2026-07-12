@@ -12,7 +12,7 @@ The server exposes **25 tools** across four areas:
 
 - 📖 **Database lookups** — datasheets, factions, stratagems, unit comparison
 - ⚔️ **MathHammer / combat calculator** — expected-value and Monte Carlo damage calculation with automatic ability detection
-- ⚒️ **Army builder** — build lists with automatically refreshed MFM points (including copy-tier pricing and wargear surcharges)
+- ⚒️ **Army builder** — build lists with automatically refreshed MFM points (including copy-tier pricing, wargear surcharges, detachments & enhancements), stored permanently
 - 📚 **Strategy knowledge base** — capture and retrieve tactical tips extracted from articles/battle reports
 
 ---
@@ -161,7 +161,7 @@ calculate_combat('Einhyr Hearthguard', 'Deathshroud Terminators', mode: 'ranged'
 
 ### 3. Army builder (`ArmyBuilderTools`)
 
-Manages in-memory army lists and automatically loads points costs from the official **Munitorum Field Manual** (via Playwright scraping, with a 24h cache and automatic fallback to Wahapedia points if the MFM has no data). Detects copy-tier pricing (e.g. 1st–2nd copy cheaper than 3rd+ copy) automatically.
+Manages army lists — stored permanently on disk, so they survive a server restart — and automatically loads points costs from the official **Munitorum Field Manual** (via Playwright scraping, with a 24h cache and automatic fallback to Wahapedia points if the MFM has no data). Detects copy-tier pricing (e.g. 1st–2nd copy cheaper than 3rd+ copy) automatically.
 
 | Tool | Parameters | Description |
 |------|-----------|--------------|
@@ -172,11 +172,11 @@ Manages in-memory army lists and automatically loads points costs from the offic
 | `add_enhancement` | `army_name`, `unit_index`, `enhancement_name` | Attaches an enhancement to a unit (max. 1 per unit); its points cost is automatically added to the army total. |
 | `remove_enhancement` | `army_name`, `unit_index` | Removes a unit's enhancement again. |
 | `show_army` | `army_name` | Shows the current list with all units, enhancements, points, and a progress bar toward the points limit. |
-| `list_armies` | – | Lists all armies saved in this server session. |
+| `list_armies` | – | Lists all saved armies (permanent, across restarts). |
 | `refresh_mfm_points` | `faction` | Clears a faction's points cache and reloads fresh from the MFM — use when Games Workshop has published new points. |
 | `get_wargear_options` | `unit_name`, `faction?` | Shows wargear points surcharges for a unit (e.g. "per Storm Shield: +5 points per model"), on top of the base cost. |
 
-> **Note:** Army lists only live in memory for the duration of the server session (no restart persistence) — unlike the strategy notes below, which are stored permanently on disk.
+> **Note:** Army lists are saved to JSON immediately after every change (see [Caching & data directories](#caching--data-directories)) — unlike the MFM points cache, which expires after 24h.
 
 ### 4. Strategy knowledge base (`StrategyTools`)
 
@@ -214,8 +214,9 @@ All persistent data lives under `%LOCALAPPDATA%\Waha40kMcp\` (Windows) or `~/.lo
 | `cache\` | Wahapedia CSV files (datasheets, stratagems, factions, …) | 24h |
 | `mfm-cache\` | Scraped MFM points costs & wargear surcharges per faction | 24h |
 | `strategy\notes.json` | Saved tactical tips (permanent, no expiry) | – |
+| `armies\armies.json` | Saved army lists including units, detachment, and enhancements (permanent) | – |
 
-Cache directories can be deleted at any time — they are refilled automatically the next time they're needed.
+Cache directories (`cache\`, `mfm-cache\`) can be deleted at any time — they are refilled automatically the next time they're needed. `strategy\notes.json` and `armies\armies.json`, on the other hand, are your saved data — don't delete them if you want to keep it.
 
 ## Tests
 

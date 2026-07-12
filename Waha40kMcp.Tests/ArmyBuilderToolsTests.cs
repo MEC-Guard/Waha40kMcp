@@ -6,17 +6,32 @@ using Xunit;
 namespace Waha40kMcp.Tests;
 
 /// <summary>
-/// ArmyBuilderTools nutzt statische Dictionaries für Armies/MFM-Cache (siehe ArmyBuilderTools.cs),
-/// die über den gesamten Testlauf hinweg geteilt werden. Damit sich Tests nicht gegenseitig
-/// stören, bekommt jeder Test einen eigenen, per Guid eindeutigen Army- und Faction-Namen.
+/// ArmyBuilderTools nutzt ein statisches Dictionary für den MFM-Cache (siehe ArmyBuilderTools.cs),
+/// das über den gesamten Testlauf hinweg geteilt wird. Damit sich Tests nicht gegenseitig stören,
+/// bekommt jeder Test einen eigenen, per Zähler eindeutigen Army- und Faction-Namen.
+/// Die Army-Persistenz (ArmyRepository) bekommt zusätzlich pro Test ein eigenes, isoliertes
+/// Temp-Verzeichnis (analog StrategyRepositoryTests), damit Tests nicht dieselbe armies.json teilen.
 /// </summary>
-public class ArmyBuilderToolsTests
+public class ArmyBuilderToolsTests : IDisposable
 {
+    private readonly string _tempDir;
+
+    public ArmyBuilderToolsTests()
+    {
+        _tempDir = Path.Combine(Path.GetTempPath(), "Waha40kMcpTests_Army_" + Guid.NewGuid().ToString("N"));
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_tempDir))
+            Directory.Delete(_tempDir, recursive: true);
+    }
+
     private sealed record Fixture(WahapediaRepository Repo, ArmyBuilderTools Tools, FakeMfmScraper Scraper, string FactionId, string ArmyName);
 
     private static int _fixtureCounter;
 
-    private static Fixture MakeFixture()
+    private Fixture MakeFixture()
     {
         // Bewusst KEIN Guid-Hex-Suffix und KEIN Wort wie "FACTION": MfmScraper.GetSlugForFaction()
         // matcht Kurz-Abkürzungen (z.B. "AC", "CD", "AE" — alles gültige Hex-Zeichen bzw. in
@@ -30,7 +45,8 @@ public class ArmyBuilderToolsTests
         repo.Factions[factionId] = new Faction { Id = factionId, Name = "Leagues of Votann" };
 
         var scraper = new FakeMfmScraper();
-        var tools = new ArmyBuilderTools(repo, scraper);
+        var armyRepo = new ArmyRepository(_tempDir);
+        var tools = new ArmyBuilderTools(repo, scraper, armyRepo);
 
         return new Fixture(repo, tools, scraper, factionId, armyName);
     }
@@ -350,6 +366,29 @@ public class ArmyBuilderToolsTests
         var result = fx.Tools.remove_enhancement(fx.ArmyName, 1);
 
         Assert.Contains("Ungültiger Index", result);
+    }
+
+    // ── Persistenz ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Army_SurvivesAcrossArmyBuilderToolsInstances_SimulatingServerRestart()
+    {
+        var fx1 = MakeFixture();
+        AddDatasheet(fx1.Repo, fx1.FactionId, "Einhyr Hearthguard", "ds1");
+        var slug = MfmScraper.GetSlugForFaction("Leagues of Votann")!;
+        fx1.Scraper.SetUnitPoints(slug, "einhyr hearthguard", [new PointsCostEntry { Description = "5 models", Cost = 150 }]);
+
+        fx1.Tools.create_army(fx1.ArmyName, "Leagues of Votann", 2000);
+        await fx1.Tools.add_unit(fx1.ArmyName, "Einhyr Hearthguard", 5);
+
+        // Simuliert einen Serverneustart: neues ArmyRepository (gleiches Verzeichnis), neue ArmyBuilderTools-Instanz.
+        var armyRepoAfterRestart = new ArmyRepository(_tempDir);
+        var toolsAfterRestart = new ArmyBuilderTools(fx1.Repo, fx1.Scraper, armyRepoAfterRestart);
+
+        var shown = toolsAfterRestart.show_army(fx1.ArmyName);
+
+        Assert.Contains("Einhyr Hearthguard", shown);
+        Assert.Contains("150 / 2000", shown);
     }
 
     // ── Reine Hilfsmethoden ──────────────────────────────────────────────────

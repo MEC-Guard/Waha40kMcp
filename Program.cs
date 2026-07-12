@@ -64,6 +64,7 @@ if (httpMode)
     webBuilder.Services.AddSingleton<MfmScraper>();
     webBuilder.Services.AddSingleton<IMfmScraper>(sp => sp.GetRequiredService<MfmScraper>());
     webBuilder.Services.AddSingleton<StrategyRepository>();
+    webBuilder.Services.AddSingleton<ArmyRepository>();
 
     webBuilder.Services
         .AddMcpServer()
@@ -111,6 +112,7 @@ else
     builder.Services.AddSingleton<MfmScraper>();
     builder.Services.AddSingleton<IMfmScraper>(sp => sp.GetRequiredService<MfmScraper>());
     builder.Services.AddSingleton<StrategyRepository>();
+    builder.Services.AddSingleton<ArmyRepository>();
 
     builder.Services
         .AddMcpServer()

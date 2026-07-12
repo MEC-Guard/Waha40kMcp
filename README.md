@@ -12,7 +12,7 @@ Der Server stellt **25 Tools** in vier Bereichen bereit:
 
 - 📖 **Datenbank-Abfragen** — Datasheets, Fraktionen, Stratagems, Punkte-Vergleich
 - ⚔️ **MathHammer / Combat-Rechner** — Erwartungswert- und Monte-Carlo-Schadensberechnung inkl. automatischer Fähigkeiten-Erkennung
-- ⚒️ **Army Builder** — Listen bauen mit automatisch aktualisierten MFM-Punktekosten (inkl. Copy-Tier-Staffelung und Wargear-Aufpreisen)
+- ⚒️ **Army Builder** — Listen bauen mit automatisch aktualisierten MFM-Punktekosten (inkl. Copy-Tier-Staffelung, Wargear-Aufpreisen, Detachments & Enhancements), dauerhaft gespeichert
 - 📚 **Strategie-Wissensbasis** — taktische Tipps aus Artikeln/Battle-Reports strukturiert ablegen und wiederfinden
 
 ---
@@ -161,7 +161,7 @@ calculate_combat('Einhyr Hearthguard', 'Deathshroud Terminators', mode: 'ranged'
 
 ### 3. Army Builder (`ArmyBuilderTools`)
 
-Verwaltet In-Memory-Army-Listen und lädt Punktekosten automatisch vom offiziellen **Munitorum Field Manual** (via Playwright-Scraping, mit 24h-Cache und automatischem Fallback auf Wahapedia-Punkte, falls das MFM keine Daten liefert). Erkennt Copy-Tier-Staffelungen (z.B. 1.–2. Kopie günstiger als 3.+ Kopie) automatisch.
+Verwaltet Army-Listen — dauerhaft auf Disk gespeichert, überleben also einen Server-Neustart — und lädt Punktekosten automatisch vom offiziellen **Munitorum Field Manual** (via Playwright-Scraping, mit 24h-Cache und automatischem Fallback auf Wahapedia-Punkte, falls das MFM keine Daten liefert). Erkennt Copy-Tier-Staffelungen (z.B. 1.–2. Kopie günstiger als 3.+ Kopie) automatisch.
 
 | Tool | Parameter | Beschreibung |
 |------|-----------|--------------|
@@ -172,11 +172,11 @@ Verwaltet In-Memory-Army-Listen und lädt Punktekosten automatisch vom offiziell
 | `add_enhancement` | `army_name`, `unit_index`, `enhancement_name` | Hängt eine Enhancement an eine Einheit (max. 1 pro Einheit); Punktekosten fließen automatisch in die Army-Gesamtsumme ein. |
 | `remove_enhancement` | `army_name`, `unit_index` | Entfernt die Enhancement einer Einheit wieder. |
 | `show_army` | `army_name` | Zeigt die aktuelle Liste mit allen Einheiten, Enhancements, Punkten und einem Fortschrittsbalken zum Punktelimit. |
-| `list_armies` | – | Listet alle in dieser Server-Sitzung gespeicherten Armies. |
+| `list_armies` | – | Listet alle gespeicherten Armies auf (dauerhaft, über Neustarts hinweg). |
 | `refresh_mfm_points` | `faction` | Löscht den Punkte-Cache einer Fraktion und lädt frisch vom MFM — nutzen, wenn Games Workshop neue Punkte veröffentlicht hat. |
 | `get_wargear_options` | `unit_name`, `faction?` | Zeigt Wargear-Punktaufpreise einer Einheit (z.B. „per Storm Shield: +5 Punkte pro Modell"), zusätzlich zum Grundpreis. |
 
-> **Hinweis:** Army-Listen leben nur für die Dauer der Server-Sitzung im Speicher (kein Neustart-Persistenz) — anders als die Strategie-Notizen unten, die dauerhaft auf Disk gespeichert werden.
+> **Hinweis:** Army-Listen werden nach jeder Änderung sofort als JSON gespeichert (siehe [Caching & Datenverzeichnisse](#caching--datenverzeichnisse)) — anders als der MFM-Punkte-Cache, der nach 24h abläuft.
 
 ### 4. Strategie-Wissensbasis (`StrategyTools`)
 
@@ -214,8 +214,9 @@ Alle persistenten Daten liegen unter `%LOCALAPPDATA%\Waha40kMcp\` (Windows) bzw.
 | `cache\` | Wahapedia-CSV-Dateien (Datasheets, Stratagems, Fraktionen, …) | 24h |
 | `mfm-cache\` | Gescrapte MFM-Punktekosten & Wargear-Aufpreise pro Fraktion | 24h |
 | `strategy\notes.json` | Gespeicherte taktische Tipps (dauerhaft, kein Ablaufdatum) | – |
+| `armies\armies.json` | Gespeicherte Army-Listen inkl. Einheiten, Detachment und Enhancements (dauerhaft) | – |
 
-Cache-Verzeichnisse können jederzeit gelöscht werden — sie werden beim nächsten Bedarf automatisch neu befüllt.
+Cache-Verzeichnisse (`cache\`, `mfm-cache\`) können jederzeit gelöscht werden — sie werden beim nächsten Bedarf automatisch neu befüllt. `strategy\notes.json` und `armies\armies.json` sind hingegen deine gespeicherten Daten — nicht löschen, wenn du sie behalten willst.
 
 ## Tests
 

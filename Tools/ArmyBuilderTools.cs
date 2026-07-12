@@ -8,12 +8,8 @@ using Waha40kMcp.Models;
 namespace Waha40kMcp.Tools;
 
 [McpServerToolType]
-public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
+public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper, ArmyRepository armyRepo)
 {
-    // In-memory Army Lists pro Session (Key = army name).
-    // ConcurrentDictionary, da im --http Modus mehrere Requests parallel zugreifen können.
-    private static readonly ConcurrentDictionary<string, ArmyList> Armies = new();
-
     // MFM Punkte Cache pro Fraktion
     private static readonly ConcurrentDictionary<string, Dictionary<string, List<PointsCostEntry>>> MfmCache = new();
 
@@ -82,7 +78,7 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
             resolvedDetachment = detachmentAbility.Detachment;
         }
 
-        Armies[army_name] = new ArmyList
+        armyRepo.Set(army_name, new ArmyList
         {
             Name        = army_name,
             FactionId   = f.Id,
@@ -90,7 +86,7 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
             PointsLimit = points_limit,
             Detachment  = resolvedDetachment,
             Units       = []
-        };
+        });
 
         var sb = new StringBuilder();
         sb.AppendLine($"✅ Army **{army_name}** ({f.Name}, {points_limit} Punkte" +
@@ -111,8 +107,8 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
         [Description("Name der Army")] string army_name,
         [Description("Detachment-Name, siehe list_detachments()")] string detachment)
     {
-        if (!Armies.TryGetValue(army_name, out var army))
-            return $"Army '{army_name}' nicht gefunden.";
+        var army = armyRepo.Get(army_name);
+        if (army == null) return $"Army '{army_name}' nicht gefunden.";
 
         var detachmentAbility = repo.FindDetachment(army.FactionId, detachment);
         if (detachmentAbility == null)
@@ -120,6 +116,7 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
                    $"Verfügbar: {string.Join(", ", repo.GetDetachmentNames(army.FactionId))}";
 
         army.Detachment = detachmentAbility.Detachment;
+        armyRepo.SaveChanges();
 
         return $"✅ Detachment **{army.Detachment}** für **{army_name}** gesetzt.\n\n" +
                $"**{detachmentAbility.Name}:** {detachmentAbility.Description}";
@@ -136,8 +133,8 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
         [Description("Name der Einheit")] string unit_name,
         [Description("Anzahl Modelle in der Einheit")] int model_count = 0)
     {
-        if (!Armies.TryGetValue(army_name, out var army))
-            return $"Army '{army_name}' nicht gefunden. Erstelle sie mit `create_army()`.";
+        var army = armyRepo.Get(army_name);
+        if (army == null) return $"Army '{army_name}' nicht gefunden. Erstelle sie mit `create_army()`.";
 
         var ds = repo.SearchDatasheets(unit_name, army.FactionId).FirstOrDefault();
         if (ds == null) return $"Einheit '{unit_name}' nicht gefunden.";
@@ -207,6 +204,7 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
         };
 
         army.Units.Add(unit);
+        armyRepo.SaveChanges();
 
         var sb = new StringBuilder();
         sb.AppendLine($"✅ **{ds.Name}** ({unit.ModelCount} Modelle, {unit.Points} Punkte) hinzugefügt.");
@@ -237,14 +235,15 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
         [Description("Name der Army")] string army_name,
         [Description("Index der Einheit (1 = erste Einheit)")] int unit_index)
     {
-        if (!Armies.TryGetValue(army_name, out var army))
-            return $"Army '{army_name}' nicht gefunden.";
+        var army = armyRepo.Get(army_name);
+        if (army == null) return $"Army '{army_name}' nicht gefunden.";
 
         if (unit_index < 1 || unit_index > army.Units.Count)
             return $"Ungültiger Index {unit_index}. Die Army hat {army.Units.Count} Einheiten.";
 
         var removed = army.Units[unit_index - 1];
         army.Units.RemoveAt(unit_index - 1);
+        armyRepo.SaveChanges();
 
         return $"✅ **{removed.Name}** entfernt.\n\n" +
                $"**{army.Name}:** {army.TotalPoints} / {army.PointsLimit} Punkte";
@@ -262,8 +261,8 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
         [Description("Index der Einheit, die die Enhancement tragen soll (1-basiert, siehe show_army)")] int unit_index,
         [Description("Name der Enhancement, siehe list_enhancements()")] string enhancement_name)
     {
-        if (!Armies.TryGetValue(army_name, out var army))
-            return $"Army '{army_name}' nicht gefunden.";
+        var army = armyRepo.Get(army_name);
+        if (army == null) return $"Army '{army_name}' nicht gefunden.";
 
         if (string.IsNullOrEmpty(army.Detachment))
             return $"Für '{army_name}' ist noch kein Detachment gesetzt. " +
@@ -285,6 +284,7 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
         unit.EnhancementName = enhancement.Name;
         unit.EnhancementCost = enhancement.Cost;
         unit.Points += enhancement.Cost;
+        armyRepo.SaveChanges();
 
         var sb = new StringBuilder();
         sb.AppendLine($"✅ **{enhancement.Name}** ({enhancement.Cost} Punkte) an **{unit.Name}** angehängt.");
@@ -301,8 +301,8 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
         [Description("Name der Army")] string army_name,
         [Description("Index der Einheit (1-basiert, siehe show_army)")] int unit_index)
     {
-        if (!Armies.TryGetValue(army_name, out var army))
-            return $"Army '{army_name}' nicht gefunden.";
+        var army = armyRepo.Get(army_name);
+        if (army == null) return $"Army '{army_name}' nicht gefunden.";
 
         if (unit_index < 1 || unit_index > army.Units.Count)
             return $"Ungültiger Index {unit_index}. Die Army hat {army.Units.Count} Einheiten.";
@@ -315,6 +315,7 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
         unit.Points -= unit.EnhancementCost;
         unit.EnhancementName = "";
         unit.EnhancementCost = 0;
+        armyRepo.SaveChanges();
 
         return $"✅ Enhancement **{removedName}** von **{unit.Name}** entfernt.\n\n" +
                $"**{army.Name}:** {army.TotalPoints} / {army.PointsLimit} Punkte";
@@ -328,8 +329,9 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
     public string show_army(
         [Description("Name der Army")] string army_name)
     {
-        if (!Armies.TryGetValue(army_name, out var army))
-            return $"Army '{army_name}' nicht gefunden. Verfügbare Armies: {string.Join(", ", Armies.Keys)}";
+        var army = armyRepo.Get(army_name);
+        if (army == null)
+            return $"Army '{army_name}' nicht gefunden. Verfügbare Armies: {string.Join(", ", armyRepo.All().Keys)}";
 
         var sb = new StringBuilder();
         sb.AppendLine($"# ⚒️ {army.Name}");
@@ -375,13 +377,13 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper)
     [McpServerTool, Description("Listet alle gespeicherten Army-Listen auf.")]
     public string list_armies()
     {
-        if (Armies.Count == 0)
+        if (armyRepo.Count() == 0)
             return "Noch keine Armies erstellt. Nutze `create_army()`.";
 
         var sb = new StringBuilder();
         sb.AppendLine("# Gespeicherte Armies");
         sb.AppendLine();
-        foreach (var (name, army) in Armies)
+        foreach (var (name, army) in armyRepo.All())
         {
             var status = army.TotalPoints <= army.PointsLimit ? "✅" : "❌";
             sb.AppendLine($"- **{name}** — {army.FactionName} — " +
