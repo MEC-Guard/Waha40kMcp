@@ -32,6 +32,9 @@ public class ArmyRepository
         _storeFile = Path.Combine(_storeDir, "armies.json");
     }
 
+    /// <summary>Verzeichnis für PDF-Exporte, neben der armies.json (folgt demselben storeDir-Override).</summary>
+    public string ExportsDir => Path.Combine(_storeDir, "exports");
+
     private void EnsureLoaded()
     {
         if (_loaded) return;

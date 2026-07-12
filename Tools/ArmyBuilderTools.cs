@@ -393,6 +393,42 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper, 
         return sb.ToString();
     }
 
+    // ── Tool: Army als PDF exportieren ────────────────────────────────────────
+
+    [McpServerTool, Description(
+        "Exportiert eine Army-Liste als PDF im Stil von New Recruit: Roster-Übersichtsseite " +
+        "gefolgt von einer Datasheet-Detailseite (Stats, Fähigkeiten, Waffen) pro Einheitentyp. " +
+        "Hinweis: Der Army Builder trackt keine individuellen Wargear-Auswahlen pro Modell und " +
+        "keine Leader-Zuordnung — Detailseiten zeigen daher das vollständige Referenz-Datasheet " +
+        "statt einer konkreten Ausrüstungsauswahl, und angeführte Einheiten werden nicht zu einem " +
+        "kombinierten Block zusammengefasst. Beispiel: export_army_pdf('Meine Votann')")]
+    public async Task<string> export_army_pdf(
+        [Description("Name der Army")] string army_name,
+        [Description("Zielpfad für die PDF-Datei (optional). Standard: <Waha40kMcp-Datenverzeichnis>\\armies\\exports\\<ArmyName>.pdf")] string? output_path = null)
+    {
+        var army = armyRepo.Get(army_name);
+        if (army == null) return $"Army '{army_name}' nicht gefunden.";
+
+        if (army.Units.Count == 0)
+            return $"Army '{army_name}' hat noch keine Einheiten. Nutze zuerst `add_unit()`.";
+
+        var path = output_path ?? Path.Combine(armyRepo.ExportsDir, $"{SanitizeFileName(army_name)}.pdf");
+
+        try
+        {
+            var html = ArmyPdfExporter.BuildHtml(army, repo);
+            await ArmyPdfExporter.RenderToPdfAsync(html, path);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[ArmyBuilder] PDF-Export fehlgeschlagen: {ex}");
+            return $"❌ PDF-Export fehlgeschlagen: {ex.Message}";
+        }
+
+        return $"✅ PDF exportiert: `{path}`\n\n" +
+               $"{army.Units.Count} Einheiten, {army.TotalPoints}/{army.PointsLimit} Punkte.";
+    }
+
     // ── Tool: MFM Punkte aktualisieren ────────────────────────────────────────
 
     [McpServerTool, Description(
@@ -466,6 +502,13 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper, 
     }
 
     // ── Hilfsmethoden ─────────────────────────────────────────────────────────
+
+    internal static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var sanitized = new string(name.Select(c => invalid.Contains(c) ? '_' : c).ToArray()).Trim();
+        return sanitized.Length > 0 ? sanitized : "army";
+    }
 
     internal static int ParseModelCount(string description)
     {

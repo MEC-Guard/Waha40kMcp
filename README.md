@@ -8,11 +8,11 @@ Ein [MCP](https://modelcontextprotocol.io)-Server (Model Context Protocol) für 
 
 *Powered by Wahapedia — nicht mit Games Workshop oder Wahapedia affiliiert.*
 
-Der Server stellt **25 Tools** in vier Bereichen bereit:
+Der Server stellt **26 Tools** in vier Bereichen bereit:
 
 - 📖 **Datenbank-Abfragen** — Datasheets, Fraktionen, Stratagems, Punkte-Vergleich
 - ⚔️ **MathHammer / Combat-Rechner** — Erwartungswert- und Monte-Carlo-Schadensberechnung inkl. automatischer Fähigkeiten-Erkennung
-- ⚒️ **Army Builder** — Listen bauen mit automatisch aktualisierten MFM-Punktekosten (inkl. Copy-Tier-Staffelung, Wargear-Aufpreisen, Detachments & Enhancements), dauerhaft gespeichert
+- ⚒️ **Army Builder** — Listen bauen mit automatisch aktualisierten MFM-Punktekosten (inkl. Copy-Tier-Staffelung, Wargear-Aufpreisen, Detachments & Enhancements), dauerhaft gespeichert, als PDF exportierbar
 - 📚 **Strategie-Wissensbasis** — taktische Tipps aus Artikeln/Battle-Reports strukturiert ablegen und wiederfinden
 
 ---
@@ -175,8 +175,11 @@ Verwaltet Army-Listen — dauerhaft auf Disk gespeichert, überleben also einen 
 | `list_armies` | – | Listet alle gespeicherten Armies auf (dauerhaft, über Neustarts hinweg). |
 | `refresh_mfm_points` | `faction` | Löscht den Punkte-Cache einer Fraktion und lädt frisch vom MFM — nutzen, wenn Games Workshop neue Punkte veröffentlicht hat. |
 | `get_wargear_options` | `unit_name`, `faction?` | Zeigt Wargear-Punktaufpreise einer Einheit (z.B. „per Storm Shield: +5 Punkte pro Modell"), zusätzlich zum Grundpreis. |
+| `export_army_pdf` | `army_name`, `output_path?` | Exportiert die Liste als PDF im Stil von [New Recruit](https://www.newrecruit.eu): Roster-Übersichtsseite + eine Datasheet-Detailseite (Stats, Fähigkeiten, Waffen) pro Einheitentyp. Rendert per Playwright/Chromium — kein zusätzliches Tool nötig. |
 
 > **Hinweis:** Army-Listen werden nach jeder Änderung sofort als JSON gespeichert (siehe [Caching & Datenverzeichnisse](#caching--datenverzeichnisse)) — anders als der MFM-Punkte-Cache, der nach 24h abläuft.
+>
+> **Einschränkung beim PDF-Export:** Der Army Builder trackt keine individuellen Wargear-Auswahlen pro Modell und keine Leader-Zuordnung (welcher Character welche Einheit anführt). Detailseiten zeigen daher das vollständige Referenz-Datasheet statt einer konkreten Ausrüstungsauswahl; angeführte Einheiten werden — anders als bei New Recruit — nicht zu einem kombinierten Block zusammengefasst, und mehrere Kopien derselben Einheit teilen sich eine Detailseite (mit Hinweis auf die Anzahl) statt eines „x2"-Badges.
 
 ### 4. Strategie-Wissensbasis (`StrategyTools`)
 
@@ -200,6 +203,7 @@ Eine lokale, dauerhaft gespeicherte Wissensbasis für taktische Tipps, die Claud
 - *"Wie viel Schaden macht ein Trupp von 5 Einhyr Hearthguard gegen Deathshroud Terminators im Fernkampf?"*
 - *"Simuliere 10.000 Durchläufe: Wolf Guard Terminators im Nahkampf gegen Necron Warriors"*
 - *"Erstelle eine 2000-Punkte-Liste für Leagues of Votann und füge 10 Hernkyn Yaegirs hinzu"*
+- *"Exportiere meine Votann-Liste als PDF"*
 - *"Welche Detachments gibt es für Adeptus Custodes und was machen sie?"*
 - *"Zeig mir die Enhancements im Shield-Host-Detachment"*
 - *"Recherchiere aktuelle Taktiken für Leagues of Votann gegen Space Marines"*
@@ -215,6 +219,7 @@ Alle persistenten Daten liegen unter `%LOCALAPPDATA%\Waha40kMcp\` (Windows) bzw.
 | `mfm-cache\` | Gescrapte MFM-Punktekosten & Wargear-Aufpreise pro Fraktion | 24h |
 | `strategy\notes.json` | Gespeicherte taktische Tipps (dauerhaft, kein Ablaufdatum) | – |
 | `armies\armies.json` | Gespeicherte Army-Listen inkl. Einheiten, Detachment und Enhancements (dauerhaft) | – |
+| `armies\exports\` | PDF-Exporte von `export_army_pdf` (Standardablageort, falls kein `output_path` angegeben) | – |
 
 Cache-Verzeichnisse (`cache\`, `mfm-cache\`) können jederzeit gelöscht werden — sie werden beim nächsten Bedarf automatisch neu befüllt. `strategy\notes.json` und `armies\armies.json` sind hingegen deine gespeicherten Daten — nicht löschen, wenn du sie behalten willst.
 
