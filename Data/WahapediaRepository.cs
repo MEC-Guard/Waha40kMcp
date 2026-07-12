@@ -33,7 +33,9 @@ public class WahapediaRepository
         Console.Error.WriteLine("[Waha40k] Lade Daten von Wahapedia...");
 
         var factionRows      = await LoadCsvAsync("Factions.csv");
+        var sourceRows       = await LoadCsvAsync("Source.csv");
         var sheetRows        = await LoadCsvAsync("Datasheets.csv");
+        var keywordRows      = await LoadCsvAsync("Datasheets_keywords.csv");
         var modelRows        = await LoadCsvAsync("Datasheets_models.csv");
         var weaponRows       = await LoadCsvAsync("Datasheets_wargear.csv");
         var abilityRows      = await LoadCsvAsync("Datasheets_abilities.csv");
@@ -44,7 +46,7 @@ public class WahapediaRepository
         var enhancementRows  = await LoadCsvAsync("Enhancements.csv");
 
         BuildFactions(factionRows);
-        BuildDatasheets(sheetRows, modelRows, weaponRows, abilityRows, optionRows, pointsRows);
+        BuildDatasheets(sheetRows, modelRows, weaponRows, abilityRows, optionRows, pointsRows, sourceRows, keywordRows);
         BuildStratagems(stratagemRows);
         BuildDetachmentAbilities(detachmentRows);
         BuildEnhancements(enhancementRows);
@@ -101,7 +103,7 @@ public class WahapediaRepository
         return [];
     }
 
-    private static List<Dictionary<string, string>> ParseCsv(string csv)
+    internal static List<Dictionary<string, string>> ParseCsv(string csv)
     {
         var result = new List<Dictionary<string, string>>();
         // Wahapedia nutzt | als Trennzeichen
@@ -133,7 +135,7 @@ public class WahapediaRepository
 
     // ── Builder-Methoden ──────────────────────────────────────────────────────
 
-    private void BuildFactions(List<Dictionary<string, string>> rows)
+    internal void BuildFactions(List<Dictionary<string, string>> rows)
     {
         foreach (var r in rows)
         {
@@ -148,25 +150,38 @@ public class WahapediaRepository
         }
     }
 
-    private void BuildDatasheets(
+    internal void BuildDatasheets(
         List<Dictionary<string, string>> sheetRows,
         List<Dictionary<string, string>> modelRows,
         List<Dictionary<string, string>> weaponRows,
         List<Dictionary<string, string>> abilityRows,
         List<Dictionary<string, string>> optionRows,
-        List<Dictionary<string, string>> pointsRows)
+        List<Dictionary<string, string>> pointsRows,
+        List<Dictionary<string, string>> sourceRows,
+        List<Dictionary<string, string>> keywordRows)
     {
+        // Echte Legends-Quellen ermitteln: Source.csv verzeichnet z.B. "Space Marines (Warhammer
+        // Legends)" als eigene Quelle mit eigener id. Datasheets, deren source_id auf so eine
+        // Quelle zeigt, sind echte (nicht im Matched Play erlaubte) Legends-Einheiten.
+        // WICHTIG: Das Datasheets.csv-Feld "legend" ist dagegen KEIN Status-Flag, sondern schlicht
+        // der Fluff-/Hintergrundtext der Einheit — den hat praktisch jedes reguläre Datasheet auch
+        // (z.B. "Intercessor Squad"). Früher wurde fälschlich danach gefiltert, wodurch fast alle
+        // Einheiten mit Fluff-Text verschwanden, siehe LegendText unten für die korrekte Nutzung.
+        var legendsSourceIds = sourceRows
+            .Where(r => r.GetValueOrDefault("name", "").Contains("(Warhammer Legends)", StringComparison.OrdinalIgnoreCase))
+            .Select(r => r.GetValueOrDefault("id", ""))
+            .Where(sourceId => !string.IsNullOrEmpty(sourceId))
+            .ToHashSet();
+
         // Basis-Datasheets
         foreach (var r in sheetRows)
         {
             var id = r.GetValueOrDefault("id", "");
             if (string.IsNullOrEmpty(id)) continue;
 
-            // NEU: Legends-Einheiten komplett ignorieren — nicht im Matched Play.
-            // Wahapedia markiert Legends-Einheiten mit einem nicht-leeren "legend"-Feld.
-            // So tauchen sie nirgendwo auf: nicht in Suche, nicht in Punkten, nicht in Listen.
-            var legendField = r.GetValueOrDefault("legend", "");
-            if (!string.IsNullOrWhiteSpace(legendField)) continue;
+            // Legends-Einheiten komplett ignorieren — nicht im Matched Play.
+            var sourceId = r.GetValueOrDefault("source_id", "");
+            if (legendsSourceIds.Contains(sourceId)) continue;
 
             var factionId = r.GetValueOrDefault("faction_id", "");
             Factions.TryGetValue(factionId, out var faction);
@@ -178,11 +193,32 @@ public class WahapediaRepository
                 FactionId        = factionId,
                 FactionName      = faction?.Name ?? factionId,
                 Link             = r.GetValueOrDefault("link", ""),
-                Keywords         = r.GetValueOrDefault("keywords", ""),
-                FactionKeywords  = r.GetValueOrDefault("faction_keywords", ""),
-                Datasheettype    = r.GetValueOrDefault("datasheettype", ""),
-                LegendText       = "",   // immer leer — Legends werden schon oben herausgefiltert
+                // Keywords stehen nicht in Datasheets.csv, sondern in der separaten
+                // Datasheets_keywords.csv — werden weiter unten befüllt.
+                Datasheettype    = r.GetValueOrDefault("role", ""), // Spalte heißt "role", nicht "datasheettype"
+                LegendText       = r.GetValueOrDefault("legend", ""), // Fluff-/Hintergrundtext
             };
+        }
+
+        // Keywords aus der separaten Datasheets_keywords.csv (datasheet_id, keyword, model, is_faction_keyword).
+        // Modellspezifische Keywords (model-Feld gesetzt) werden ignoriert — wir zeigen nur
+        // die für das ganze Datasheet geltenden Keywords.
+        foreach (var r in keywordRows)
+        {
+            var dsId = r.GetValueOrDefault("datasheet_id", "");
+            if (!Datasheets.TryGetValue(dsId, out var ds)) continue;
+            if (!string.IsNullOrEmpty(r.GetValueOrDefault("model", ""))) continue;
+
+            var keyword = r.GetValueOrDefault("keyword", "");
+            if (string.IsNullOrEmpty(keyword)) continue;
+
+            var isFactionKeyword = r.GetValueOrDefault("is_faction_keyword", "")
+                .Equals("true", StringComparison.OrdinalIgnoreCase);
+
+            if (isFactionKeyword)
+                ds.FactionKeywords = ds.FactionKeywords.Length == 0 ? keyword : $"{ds.FactionKeywords}, {keyword}";
+            else
+                ds.Keywords = ds.Keywords.Length == 0 ? keyword : $"{ds.Keywords}, {keyword}";
         }
 
         // Models (Stats)
@@ -223,7 +259,9 @@ public class WahapediaRepository
                 S           = r.GetValueOrDefault("s", ""),
                 Ap          = r.GetValueOrDefault("ap", ""),
                 D           = r.GetValueOrDefault("d", ""),
-                Keywords    = r.GetValueOrDefault("keywords", ""),
+                // Kein eigenes "keywords"-Feld in Datasheets_wargear.csv — die Waffen-Keywords
+                // (z.B. "rapid fire 2") stehen im "description"-Feld.
+                Keywords    = r.GetValueOrDefault("description", ""),
             });
         }
 
