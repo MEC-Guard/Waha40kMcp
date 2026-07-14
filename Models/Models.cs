@@ -168,6 +168,11 @@ public class Enhancement
 
 public class ArmyUnit
 {
+    /// <summary>Stabile, im Army-Objekt eindeutige ID — unabhängig von der (sich durch
+    /// add_unit/remove_unit verschiebenden) Listenposition. Wird für <see cref="AttachedToUnitId"/>
+    /// referenziert, damit die Zuordnung Umsortierungen/Löschungen übersteht.</summary>
+    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+
     public string DatasheetId { get; set; } = "";
     public string Name { get; set; } = "";
     public int Points { get; set; }
@@ -177,6 +182,13 @@ public class ArmyUnit
     public string EnhancementName { get; set; } = "";
     /// <summary>Punktekosten der Enhancement — bereits in <see cref="Points"/> enthalten.</summary>
     public int EnhancementCost { get; set; }
+
+    /// <summary>
+    /// Falls gesetzt: die <see cref="Id"/> der Einheit, die dieser (Leader-)Charakter anführt.
+    /// Wird von ArmyPdfExporter genutzt, um Leader und geführte Einheit zu einem gemeinsamen
+    /// Detasheet-Block zusammenzuführen (wie "Attach" in New Recruit).
+    /// </summary>
+    public string? AttachedToUnitId { get; set; }
 }
 
 public class ArmyList

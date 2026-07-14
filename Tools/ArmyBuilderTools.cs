@@ -243,10 +243,78 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper, 
 
         var removed = army.Units[unit_index - 1];
         army.Units.RemoveAt(unit_index - 1);
+
+        // Verwaiste Leader-Zuordnungen aufräumen: falls die entfernte Einheit selbst geführt
+        // wurde oder ein Leader war, würde die gespeicherte Id sonst ins Leere zeigen.
+        foreach (var u in army.Units)
+            if (u.AttachedToUnitId == removed.Id)
+                u.AttachedToUnitId = null;
+
         armyRepo.SaveChanges();
 
         return $"✅ **{removed.Name}** entfernt.\n\n" +
                $"**{army.Name}:** {army.TotalPoints} / {army.PointsLimit} Punkte";
+    }
+
+    // ── Tool: Leader anführen lassen ───────────────────────────────────────────
+
+    [McpServerTool, Description(
+        "Ordnet einen Leader/Charakter als Anführer einer anderen Einheit zu (wie 'Attach' in " +
+        "New Recruit). Wirkt sich nur auf export_army_pdf aus: Leader und geführte Einheit werden " +
+        "dort zu einem gemeinsamen Datasheet-Block zusammengeführt statt zwei getrennte Seiten zu " +
+        "erzeugen. Beispiel: attach_leader('Meine Votann', 1, 2) — Einheit 1 führt Einheit 2 an.")]
+    public string attach_leader(
+        [Description("Name der Army")] string army_name,
+        [Description("Index des Leaders (1-basiert, siehe show_army)")] int leader_unit_index,
+        [Description("Index der Einheit, die angeführt werden soll (1-basiert)")] int target_unit_index)
+    {
+        var army = armyRepo.Get(army_name);
+        if (army == null) return $"Army '{army_name}' nicht gefunden.";
+
+        if (leader_unit_index < 1 || leader_unit_index > army.Units.Count)
+            return $"Ungültiger Leader-Index {leader_unit_index}. Die Army hat {army.Units.Count} Einheiten.";
+        if (target_unit_index < 1 || target_unit_index > army.Units.Count)
+            return $"Ungültiger Ziel-Index {target_unit_index}. Die Army hat {army.Units.Count} Einheiten.";
+        if (leader_unit_index == target_unit_index)
+            return "Eine Einheit kann nicht sich selbst anführen.";
+
+        var leader = army.Units[leader_unit_index - 1];
+        var target = army.Units[target_unit_index - 1];
+
+        // Ketten vermeiden: die Ziel-Einheit darf nicht selbst schon ein Leader sein, der wiederum
+        // eine andere Einheit anführt — New Recruit kennt nur eine Ebene (Leader -> geführte Einheit).
+        if (target.AttachedToUnitId != null)
+            return $"**{target.Name}** führt bereits selbst eine andere Einheit an und kann daher " +
+                   $"nicht gleichzeitig als Ziel dienen.";
+
+        leader.AttachedToUnitId = target.Id;
+        armyRepo.SaveChanges();
+
+        return $"✅ **{leader.Name}** (#{leader_unit_index}) führt jetzt **{target.Name}** (#{target_unit_index}) an.\n\n" +
+               "Im PDF-Export (`export_army_pdf`) erscheinen beide als ein gemeinsamer Block.";
+    }
+
+    // ── Tool: Leader-Zuordnung entfernen ───────────────────────────────────────
+
+    [McpServerTool, Description("Entfernt die Anführer-Zuordnung eines Leaders (siehe attach_leader).")]
+    public string detach_leader(
+        [Description("Name der Army")] string army_name,
+        [Description("Index des Leaders (1-basiert, siehe show_army)")] int leader_unit_index)
+    {
+        var army = armyRepo.Get(army_name);
+        if (army == null) return $"Army '{army_name}' nicht gefunden.";
+
+        if (leader_unit_index < 1 || leader_unit_index > army.Units.Count)
+            return $"Ungültiger Index {leader_unit_index}. Die Army hat {army.Units.Count} Einheiten.";
+
+        var leader = army.Units[leader_unit_index - 1];
+        if (leader.AttachedToUnitId == null)
+            return $"**{leader.Name}** führt aktuell keine Einheit an.";
+
+        leader.AttachedToUnitId = null;
+        armyRepo.SaveChanges();
+
+        return $"✅ **{leader.Name}** führt keine Einheit mehr an.";
     }
 
     // ── Tool: Enhancement anhängen ─────────────────────────────────────────────
@@ -352,15 +420,22 @@ public class ArmyBuilderTools(WahapediaRepository repo, IMfmScraper mfmScraper, 
             return sb.ToString();
         }
 
-        sb.AppendLine("| # | Einheit | Modelle | Punkte | Enhancement |");
-        sb.AppendLine("|---|---------|---------|--------|-------------|");
+        var indexById = army.Units
+            .Select((u, i) => (u.Id, Index: i + 1))
+            .ToDictionary(x => x.Id, x => x.Index);
+
+        sb.AppendLine("| # | Einheit | Modelle | Punkte | Enhancement | Führt an |");
+        sb.AppendLine("|---|---------|---------|--------|-------------|----------|");
         for (int i = 0; i < army.Units.Count; i++)
         {
             var u = army.Units[i];
             var enhancementCell = string.IsNullOrEmpty(u.EnhancementName)
                 ? "–"
                 : $"{u.EnhancementName} (+{u.EnhancementCost})";
-            sb.AppendLine($"| {i + 1} | {u.Name} | {u.ModelCount} | {u.Points} | {enhancementCell} |");
+            var leadsCell = u.AttachedToUnitId != null && indexById.TryGetValue(u.AttachedToUnitId, out var targetIdx)
+                ? $"#{targetIdx}"
+                : "–";
+            sb.AppendLine($"| {i + 1} | {u.Name} | {u.ModelCount} | {u.Points} | {enhancementCell} | {leadsCell} |");
         }
 
         sb.AppendLine();

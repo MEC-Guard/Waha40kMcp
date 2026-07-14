@@ -368,6 +368,144 @@ public class ArmyBuilderToolsTests : IDisposable
         Assert.Contains("Ungültiger Index", result);
     }
 
+    // ── Leader-Zuordnung ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AttachLeader_SetsAttachmentAndShowsInShowArmy()
+    {
+        var fx = MakeFixture();
+        AddDatasheet(fx.Repo, fx.FactionId, "Hearthkyn Chief", "ds1");
+        AddDatasheet(fx.Repo, fx.FactionId, "Einhyr Hearthguard", "ds2");
+        var slug = MfmScraper.GetSlugForFaction("Leagues of Votann")!;
+        fx.Scraper.SetUnitPoints(slug, "hearthkyn chief", [new PointsCostEntry { Description = "1 model", Cost = 70 }]);
+        fx.Scraper.SetUnitPoints(slug, "einhyr hearthguard", [new PointsCostEntry { Description = "5 models", Cost = 150 }]);
+
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000);
+        await fx.Tools.add_unit(fx.ArmyName, "Hearthkyn Chief", 1);
+        await fx.Tools.add_unit(fx.ArmyName, "Einhyr Hearthguard", 5);
+
+        var result = fx.Tools.attach_leader(fx.ArmyName, 1, 2);
+
+        Assert.Contains("Hearthkyn Chief", result);
+        Assert.Contains("Einhyr Hearthguard", result);
+        var shown = fx.Tools.show_army(fx.ArmyName);
+        Assert.Contains("#2", shown); // "Führt an"-Spalte zeigt auf Index 2
+    }
+
+    [Fact]
+    public async Task AttachLeader_InvalidIndices_ReturnsError()
+    {
+        var fx = MakeFixture();
+        AddDatasheet(fx.Repo, fx.FactionId, "Hearthkyn Chief", "ds1");
+        var slug = MfmScraper.GetSlugForFaction("Leagues of Votann")!;
+        fx.Scraper.SetUnitPoints(slug, "hearthkyn chief", [new PointsCostEntry { Description = "1 model", Cost = 70 }]);
+
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000);
+        await fx.Tools.add_unit(fx.ArmyName, "Hearthkyn Chief", 1);
+
+        var result = fx.Tools.attach_leader(fx.ArmyName, 1, 99);
+
+        Assert.Contains("Ungültiger Ziel-Index", result);
+    }
+
+    [Fact]
+    public async Task AttachLeader_SelfAttachment_ReturnsError()
+    {
+        var fx = MakeFixture();
+        AddDatasheet(fx.Repo, fx.FactionId, "Hearthkyn Chief", "ds1");
+        var slug = MfmScraper.GetSlugForFaction("Leagues of Votann")!;
+        fx.Scraper.SetUnitPoints(slug, "hearthkyn chief", [new PointsCostEntry { Description = "1 model", Cost = 70 }]);
+
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000);
+        await fx.Tools.add_unit(fx.ArmyName, "Hearthkyn Chief", 1);
+
+        var result = fx.Tools.attach_leader(fx.ArmyName, 1, 1);
+
+        Assert.Contains("nicht sich selbst", result);
+    }
+
+    [Fact]
+    public async Task AttachLeader_TargetAlreadyLeadsAnotherUnit_IsRejected()
+    {
+        var fx = MakeFixture();
+        AddDatasheet(fx.Repo, fx.FactionId, "Leader A", "ds1");
+        AddDatasheet(fx.Repo, fx.FactionId, "Leader B", "ds2");
+        AddDatasheet(fx.Repo, fx.FactionId, "Squad", "ds3");
+        var slug = MfmScraper.GetSlugForFaction("Leagues of Votann")!;
+        fx.Scraper.SetUnitPoints(slug, "leader a", [new PointsCostEntry { Description = "1 model", Cost = 70 }]);
+        fx.Scraper.SetUnitPoints(slug, "leader b", [new PointsCostEntry { Description = "1 model", Cost = 70 }]);
+        fx.Scraper.SetUnitPoints(slug, "squad", [new PointsCostEntry { Description = "5 models", Cost = 150 }]);
+
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000);
+        await fx.Tools.add_unit(fx.ArmyName, "Leader A", 1);
+        await fx.Tools.add_unit(fx.ArmyName, "Leader B", 1);
+        await fx.Tools.add_unit(fx.ArmyName, "Squad", 5);
+        fx.Tools.attach_leader(fx.ArmyName, 1, 3); // Leader A -> Squad
+
+        // Leader B soll nicht an "Leader A" andocken können, da Leader A bereits selbst führt.
+        var result = fx.Tools.attach_leader(fx.ArmyName, 2, 1);
+
+        Assert.Contains("bereits", result);
+    }
+
+    [Fact]
+    public async Task DetachLeader_RemovesAttachment()
+    {
+        var fx = MakeFixture();
+        AddDatasheet(fx.Repo, fx.FactionId, "Hearthkyn Chief", "ds1");
+        AddDatasheet(fx.Repo, fx.FactionId, "Einhyr Hearthguard", "ds2");
+        var slug = MfmScraper.GetSlugForFaction("Leagues of Votann")!;
+        fx.Scraper.SetUnitPoints(slug, "hearthkyn chief", [new PointsCostEntry { Description = "1 model", Cost = 70 }]);
+        fx.Scraper.SetUnitPoints(slug, "einhyr hearthguard", [new PointsCostEntry { Description = "5 models", Cost = 150 }]);
+
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000);
+        await fx.Tools.add_unit(fx.ArmyName, "Hearthkyn Chief", 1);
+        await fx.Tools.add_unit(fx.ArmyName, "Einhyr Hearthguard", 5);
+        fx.Tools.attach_leader(fx.ArmyName, 1, 2);
+
+        var result = fx.Tools.detach_leader(fx.ArmyName, 1);
+
+        Assert.Contains("führt keine Einheit mehr an", result);
+        var shown = fx.Tools.show_army(fx.ArmyName);
+        // "Führt an"-Spalte für Zeile 1 soll wieder "–" sein statt "#2".
+        Assert.DoesNotContain("#2", shown);
+    }
+
+    [Fact]
+    public void DetachLeader_UnitNotLeading_ReturnsError()
+    {
+        var fx = MakeFixture();
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000);
+
+        var result = fx.Tools.detach_leader(fx.ArmyName, 1);
+
+        Assert.Contains("Ungültiger Index", result); // leere Army, Index 1 existiert nicht
+    }
+
+    [Fact]
+    public async Task RemoveUnit_ClearsDanglingAttachmentOnRemainingUnits()
+    {
+        var fx = MakeFixture();
+        AddDatasheet(fx.Repo, fx.FactionId, "Hearthkyn Chief", "ds1");
+        AddDatasheet(fx.Repo, fx.FactionId, "Einhyr Hearthguard", "ds2");
+        var slug = MfmScraper.GetSlugForFaction("Leagues of Votann")!;
+        fx.Scraper.SetUnitPoints(slug, "hearthkyn chief", [new PointsCostEntry { Description = "1 model", Cost = 70 }]);
+        fx.Scraper.SetUnitPoints(slug, "einhyr hearthguard", [new PointsCostEntry { Description = "5 models", Cost = 150 }]);
+
+        fx.Tools.create_army(fx.ArmyName, "Leagues of Votann", 2000);
+        await fx.Tools.add_unit(fx.ArmyName, "Hearthkyn Chief", 1);   // #1
+        await fx.Tools.add_unit(fx.ArmyName, "Einhyr Hearthguard", 5); // #2
+        fx.Tools.attach_leader(fx.ArmyName, 1, 2);
+
+        // Die geführte Einheit (#2) entfernen -> die Zuordnung des Leaders darf nicht auf eine
+        // nicht mehr existierende Id zeigen (sonst potenziell falsche Zuordnung nach Re-Indizierung).
+        fx.Tools.remove_unit(fx.ArmyName, 2);
+
+        var shown = fx.Tools.show_army(fx.ArmyName);
+        Assert.DoesNotContain("#2", shown);
+        Assert.Contains("| 1 | Hearthkyn Chief | 1 | 70 | – | – |", shown);
+    }
+
     // ── Persistenz ───────────────────────────────────────────────────────────
 
     [Fact]

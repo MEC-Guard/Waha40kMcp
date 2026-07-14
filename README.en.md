@@ -8,7 +8,7 @@ An [MCP](https://modelcontextprotocol.io) (Model Context Protocol) server for Wa
 
 *Powered by Wahapedia — not affiliated with Games Workshop or Wahapedia.*
 
-The server exposes **26 tools** across four areas:
+The server exposes **28 tools** across four areas:
 
 - 📖 **Database lookups** — datasheets, factions, stratagems, unit comparison
 - ⚔️ **MathHammer / combat calculator** — expected-value and Monte Carlo damage calculation with automatic ability detection
@@ -169,17 +169,19 @@ Manages army lists — stored permanently on disk, so they survive a server rest
 | `set_detachment` | `army_name`, `detachment` | Sets or changes an army's detachment. Required for `add_enhancement`. |
 | `add_unit` | `army_name`, `unit_name`, `model_count=0` | Adds a unit; automatically loads the matching points cost from the MFM (including copy-tier pricing by model count). |
 | `remove_unit` | `army_name`, `unit_index` | Removes a unit by index (1-based, see `show_army`). |
+| `attach_leader` | `army_name`, `leader_unit_index`, `target_unit_index` | Assigns a leader/character as another unit's leader (like "Attach" in New Recruit). Affects `export_army_pdf`: both appear there as one combined block. |
+| `detach_leader` | `army_name`, `leader_unit_index` | Removes a leader's attachment again. |
 | `add_enhancement` | `army_name`, `unit_index`, `enhancement_name` | Attaches an enhancement to a unit (max. 1 per unit); its points cost is automatically added to the army total. |
 | `remove_enhancement` | `army_name`, `unit_index` | Removes a unit's enhancement again. |
-| `show_army` | `army_name` | Shows the current list with all units, enhancements, points, and a progress bar toward the points limit. |
+| `show_army` | `army_name` | Shows the current list with all units, enhancements, leader attachments, points, and a progress bar toward the points limit. |
 | `list_armies` | – | Lists all saved armies (permanent, across restarts). |
 | `refresh_mfm_points` | `faction` | Clears a faction's points cache and reloads fresh from the MFM — use when Games Workshop has published new points. |
 | `get_wargear_options` | `unit_name`, `faction?` | Shows wargear points surcharges for a unit (e.g. "per Storm Shield: +5 points per model"), on top of the base cost. |
-| `export_army_pdf` | `army_name`, `output_path?` | Exports the list as a PDF in the style of [New Recruit](https://www.newrecruit.eu): a roster overview page plus a datasheet detail page (stats, abilities, weapons) per unit type. Rendered via Playwright/Chromium — no extra tooling needed. |
+| `export_army_pdf` | `army_name`, `output_path?` | Exports the list as a PDF in the style of [New Recruit](https://www.newrecruit.eu): a roster overview page plus a datasheet detail page (stats, abilities, weapons) per unit type. Leaders assigned via `attach_leader()` are merged with their led unit into one combined block (combined stats/abilities/weapons tables, summed points) — just like New Recruit. Rendered via Playwright/Chromium — no extra tooling needed. |
 
 > **Note:** Army lists are saved to JSON immediately after every change (see [Caching & data directories](#caching--data-directories)) — unlike the MFM points cache, which expires after 24h.
 >
-> **PDF export limitation:** the army builder doesn't track individual per-model wargear selections or which character leads which unit. Detail pages therefore show the full reference datasheet rather than a specific loadout; unlike New Recruit, attached leaders aren't merged into a combined block, and multiple copies of the same unit share one detail page (with a note on the count) instead of an "x2" badge.
+> **PDF export limitation:** the army builder doesn't track individual per-model wargear selections (e.g. "6x Terminator with Storm Shield"). Detail pages therefore show the full datasheet rules text as a reference rather than a specific loadout. Unattached duplicate copies of the same unit still share one detail page with an "Nx" note instead of a New-Recruit-style badge.
 
 ### 4. Strategy knowledge base (`StrategyTools`)
 
@@ -203,6 +205,7 @@ A local, permanently stored knowledge base for tactical tips that Claude **parap
 - *"How much damage does a squad of 5 Einhyr Hearthguard do to Deathshroud Terminators at range?"*
 - *"Simulate 10,000 runs: Wolf Guard Terminators in melee against Necron Warriors"*
 - *"Create a 2000-point list for Leagues of Votann and add 10 Hernkyn Yaegirs"*
+- *"Let Logan Grimnar lead the Wolf Guard Terminators"*
 - *"Export my Votann list as a PDF"*
 - *"What detachments does Adeptus Custodes have and what do they do?"*
 - *"Show me the enhancements in the Shield Host detachment"*

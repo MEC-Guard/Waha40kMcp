@@ -8,14 +8,17 @@ namespace Waha40kMcp.Data;
 /// <summary>
 /// Exportiert eine Army-Liste als PDF, angelehnt an das Layout von New Recruit
 /// (https://www.newrecruit.eu): eine Roster-Übersichtsseite gefolgt von einer
-/// Datasheet-Detailseite pro Einheitentyp.
+/// Datasheet-Detailseite pro Einheitentyp. Per attach_leader() zugeordnete Leader werden
+/// zusammen mit ihrer geführten Einheit auf einem gemeinsamen Block dargestellt (kombinierte
+/// Stats-/Fähigkeiten-/Waffentabellen, addierte Punktekosten) — genau wie bei New Recruit.
 ///
 /// Hinweis zur Genauigkeit: Anders als New Recruit trackt unser Army Builder keine
-/// individuellen Wargear-/Waffenauswahlen pro Modell und auch nicht, welcher Character
-/// welche Einheit anführt. Die "Options"-Spalte im Roster zeigt daher nur die angehängte
-/// Enhancement (falls vorhanden), und Detailseiten werden nicht für angeführte Einheiten
-/// zusammengeführt oder bei mehreren Kopien dedupliziert — jede Einheit bekommt ihre eigene
-/// Seite mit dem vollständigen Datasheet-Regeltext (Stats, Fähigkeiten, Waffen) als Referenz.
+/// individuellen Wargear-/Waffenauswahlen pro Modell (z.B. "6x Terminator mit Storm Shield").
+/// Die "Options"-Spalte im Roster zeigt daher nur die angehängte Enhancement (falls vorhanden),
+/// und Detailseiten zeigen den vollständigen Datasheet-Regeltext (Stats, Fähigkeiten, Waffen)
+/// als Referenz statt einer konkreten Ausrüstungsauswahl. Unangeführte Mehrfachkopien derselben
+/// Einheit teilen sich weiterhin einen Block mit einem "Nx"-Hinweis statt eines New-Recruit-
+/// artigen Badges.
 /// </summary>
 public static class ArmyPdfExporter
 {
@@ -68,85 +71,143 @@ public static class ArmyPdfExporter
         sb.Append("</table>");
         sb.Append("</div>");
 
-        // ── Detailseiten: eine pro Einheitentyp (Datasheet), dedupliziert ────
-        var unitsByDatasheet = army.Units
-            .GroupBy(u => u.DatasheetId)
-            .Select(g => new { First = g.First(), Count = g.Count() });
+        // ── Detailseiten ──────────────────────────────────────────────────────
+        // Einheiten, die per attach_leader() einem Leader zugeordnet sind, werden mit diesem
+        // zu einem gemeinsamen Block zusammengeführt (wie "Attach" in New Recruit). Alle übrigen
+        // (unangeführten) Einheiten werden wie zuvor nach Datasheet dedupliziert dargestellt.
+        var targetIds = army.Units
+            .Where(u => u.AttachedToUnitId != null)
+            .Select(u => u.AttachedToUnitId!)
+            .ToHashSet();
+        var leadersByTargetId = army.Units
+            .Where(u => u.AttachedToUnitId != null)
+            .GroupBy(u => u.AttachedToUnitId!)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var standaloneUnits = army.Units
+            .Where(u => u.AttachedToUnitId == null && !targetIds.Contains(u.Id));
+        var ledTargetUnits = army.Units.Where(u => targetIds.Contains(u.Id));
 
-        foreach (var group in unitsByDatasheet)
+        // Kombinierte Leader+Einheit-Blöcke
+        foreach (var target in ledTargetUnits)
         {
-            var ds = repo.Datasheets.GetValueOrDefault(group.First.DatasheetId);
+            var targetDs = repo.Datasheets.GetValueOrDefault(target.DatasheetId);
+            if (targetDs == null) continue;
+
+            var leaders = leadersByTargetId.GetValueOrDefault(target.Id, []);
+            var leaderDatasheets = leaders
+                .Select(l => repo.Datasheets.GetValueOrDefault(l.DatasheetId))
+                .Where(d => d != null)
+                .Select(d => d!)
+                .ToList();
+
+            var totalPoints = leaders.Sum(l => l.Points) + target.Points;
+            var title = leaderDatasheets.Count > 0 ? leaderDatasheets[0].Name : targetDs.Name;
+            var note = leaders.Count > 0
+                ? $"Kombiniert: {string.Join(" + ", leaders.Select(l => l.Name).Append(target.Name))}."
+                : null;
+
+            AppendUnitDetailBlock(sb, $"{totalPoints} PTS", title, note,
+                [.. leaderDatasheets, targetDs]);
+        }
+
+        // Standalone-Blöcke, dedupliziert nach Datasheet
+        foreach (var group in standaloneUnits.GroupBy(u => u.DatasheetId))
+        {
+            var ds = repo.Datasheets.GetValueOrDefault(group.Key);
             if (ds == null) continue; // Datasheet nicht (mehr) in der geladenen Wahapedia-Datenbank
 
-            sb.Append("<div class=\"page unit-block\">");
-            sb.Append($"<div class=\"unit-header\"><span>{group.First.Points} PTS</span>" +
-                      $"<span>{Html(ds.Name.ToUpperInvariant())}</span></div>");
-            if (group.Count > 1)
-                sb.Append($"<p class=\"copies-note\">{group.Count}x in dieser Liste enthalten " +
-                          $"(je eigene Punktekosten/Enhancement, siehe Roster-Seite).</p>");
+            var units = group.ToList();
+            var note = units.Count > 1
+                ? $"{units.Count}x in dieser Liste enthalten (je eigene Punktekosten/Enhancement, siehe Roster-Seite)."
+                : null;
 
-            // Unit-Stats
-            if (ds.Models.Count > 0)
-            {
-                sb.Append("<div class=\"subhead\">Unit</div>");
-                sb.Append("<table><tr><th>Model</th><th>M</th><th>T</th><th>Sv</th><th>W</th><th>LD</th><th>OC</th><th>InvSv</th></tr>");
-                foreach (var m in ds.Models)
-                    sb.Append($"<tr><td>{Html(m.Name)}</td><td>{Html(m.M)}</td><td>{Html(m.T)}</td>" +
-                              $"<td>{Html(m.Sv)}</td><td>{Html(m.W)}</td><td>{Html(m.Ld)}</td>" +
-                              $"<td>{Html(m.Oc)}</td><td>{Html(m.InvSv)}</td></tr>");
-                sb.Append("</table>");
-            }
-
-            // Fähigkeiten
-            var abilities = ds.Abilities.Where(a => !string.IsNullOrEmpty(a.Name)).ToList();
-            if (abilities.Count > 0)
-            {
-                sb.Append("<div class=\"subhead\">Abilities</div>");
-                sb.Append("<table><tr><th style=\"width:140px\">Name</th><th>Description</th></tr>");
-                foreach (var a in abilities)
-                    sb.Append($"<tr><td>{Html(a.Name)}</td><td>{Html(a.Description)}</td></tr>");
-                sb.Append("</table>");
-            }
-
-            // Nahkampfwaffen
-            var melee = ds.Weapons.Where(w => w.Type.Equals("melee", StringComparison.OrdinalIgnoreCase)).ToList();
-            if (melee.Count > 0)
-            {
-                sb.Append("<div class=\"subhead\">Melee Weapons</div>");
-                sb.Append("<table><tr><th>Name</th><th>A</th><th>WS</th><th>S</th><th>AP</th><th>D</th><th>Keywords</th></tr>");
-                foreach (var w in melee)
-                    sb.Append($"<tr><td>{Html(w.Name)}</td><td>{Html(w.A)}</td><td>{Html(w.BsWs)}</td>" +
-                              $"<td>{Html(w.S)}</td><td>{Html(w.Ap)}</td><td>{Html(w.D)}</td><td>{Html(w.Keywords)}</td></tr>");
-                sb.Append("</table>");
-            }
-
-            // Fernkampfwaffen
-            var ranged = ds.Weapons.Where(w => w.Type.Equals("ranged", StringComparison.OrdinalIgnoreCase)).ToList();
-            if (ranged.Count > 0)
-            {
-                sb.Append("<div class=\"subhead\">Ranged Weapons</div>");
-                sb.Append("<table><tr><th>Name</th><th>Range</th><th>A</th><th>BS</th><th>S</th><th>AP</th><th>D</th><th>Keywords</th></tr>");
-                foreach (var w in ranged)
-                    sb.Append($"<tr><td>{Html(w.Name)}</td><td>{Html(w.Range)}</td><td>{Html(w.A)}</td>" +
-                              $"<td>{Html(w.BsWs)}</td><td>{Html(w.S)}</td><td>{Html(w.Ap)}</td><td>{Html(w.D)}</td><td>{Html(w.Keywords)}</td></tr>");
-                sb.Append("</table>");
-            }
-
-            // Categories (Datasheettype + Keywords + Faction, dedupliziert — Wahapedia-Daten
-            // überlappen sich hier häufig, z.B. Datasheettype "Battleline" steckt oft schon in Keywords)
-            var categoryTokens = new[] { ds.Datasheettype }
-                .Concat(ds.Keywords.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
-                .Where(t => !string.IsNullOrEmpty(t))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Append($"Faction: {ds.FactionName}");
-            sb.Append("<table><tr><td class=\"section-label\">Categories</td><td>" +
-                      $"{Html(string.Join(", ", categoryTokens))}</td></tr></table>");
-
-            sb.Append("</div>");
+            AppendUnitDetailBlock(sb, $"{units[0].Points} PTS", ds.Name, note, [ds]);
         }
 
         sb.Append("</body></html>");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Rendert einen Datasheet-Detailblock (eine PDF-Seite). Nimmt eine Liste von Datasheets
+    /// entgegen statt nur einem, damit Leader + geführte Einheit zu einem gemeinsamen Block mit
+    /// kombinierten Stats-/Fähigkeiten-/Waffentabellen zusammengeführt werden können.
+    /// </summary>
+    private static void AppendUnitDetailBlock(
+        StringBuilder sb, string headerLeft, string headerTitle, string? note, List<Datasheet> datasheets)
+    {
+        sb.Append("<div class=\"page unit-block\">");
+        sb.Append($"<div class=\"unit-header\"><span>{Html(headerLeft)}</span>" +
+                  $"<span>{Html(headerTitle.ToUpperInvariant())}</span></div>");
+        if (note != null)
+            sb.Append($"<p class=\"copies-note\">{Html(note)}</p>");
+
+        // Unit-Stats (alle beteiligten Datasheets in einer gemeinsamen Tabelle, wie bei New Recruit)
+        var allModels = datasheets.SelectMany(d => d.Models).ToList();
+        if (allModels.Count > 0)
+        {
+            sb.Append("<div class=\"subhead\">Unit</div>");
+            sb.Append("<table><tr><th>Model</th><th>M</th><th>T</th><th>Sv</th><th>W</th><th>LD</th><th>OC</th><th>InvSv</th></tr>");
+            foreach (var m in allModels)
+                sb.Append($"<tr><td>{Html(m.Name)}</td><td>{Html(m.M)}</td><td>{Html(m.T)}</td>" +
+                          $"<td>{Html(m.Sv)}</td><td>{Html(m.W)}</td><td>{Html(m.Ld)}</td>" +
+                          $"<td>{Html(m.Oc)}</td><td>{Html(m.InvSv)}</td></tr>");
+            sb.Append("</table>");
+        }
+
+        // Fähigkeiten (nach Name dedupliziert, falls Leader und Einheit dieselbe Core-Ability teilen)
+        var abilities = datasheets.SelectMany(d => d.Abilities)
+            .Where(a => !string.IsNullOrEmpty(a.Name))
+            .GroupBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList();
+        if (abilities.Count > 0)
+        {
+            sb.Append("<div class=\"subhead\">Abilities</div>");
+            sb.Append("<table><tr><th style=\"width:140px\">Name</th><th>Description</th></tr>");
+            foreach (var a in abilities)
+                sb.Append($"<tr><td>{Html(a.Name)}</td><td>{Html(a.Description)}</td></tr>");
+            sb.Append("</table>");
+        }
+
+        // Nahkampfwaffen
+        var melee = datasheets.SelectMany(d => d.Weapons)
+            .Where(w => w.Type.Equals("melee", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (melee.Count > 0)
+        {
+            sb.Append("<div class=\"subhead\">Melee Weapons</div>");
+            sb.Append("<table><tr><th>Name</th><th>A</th><th>WS</th><th>S</th><th>AP</th><th>D</th><th>Keywords</th></tr>");
+            foreach (var w in melee)
+                sb.Append($"<tr><td>{Html(w.Name)}</td><td>{Html(w.A)}</td><td>{Html(w.BsWs)}</td>" +
+                          $"<td>{Html(w.S)}</td><td>{Html(w.Ap)}</td><td>{Html(w.D)}</td><td>{Html(w.Keywords)}</td></tr>");
+            sb.Append("</table>");
+        }
+
+        // Fernkampfwaffen
+        var ranged = datasheets.SelectMany(d => d.Weapons)
+            .Where(w => w.Type.Equals("ranged", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (ranged.Count > 0)
+        {
+            sb.Append("<div class=\"subhead\">Ranged Weapons</div>");
+            sb.Append("<table><tr><th>Name</th><th>Range</th><th>A</th><th>BS</th><th>S</th><th>AP</th><th>D</th><th>Keywords</th></tr>");
+            foreach (var w in ranged)
+                sb.Append($"<tr><td>{Html(w.Name)}</td><td>{Html(w.Range)}</td><td>{Html(w.A)}</td>" +
+                          $"<td>{Html(w.BsWs)}</td><td>{Html(w.S)}</td><td>{Html(w.Ap)}</td><td>{Html(w.D)}</td><td>{Html(w.Keywords)}</td></tr>");
+            sb.Append("</table>");
+        }
+
+        // Categories (Datasheettype + Keywords + Faction über alle beteiligten Datasheets,
+        // dedupliziert — Wahapedia-Daten überlappen sich hier häufig)
+        var categoryTokens = datasheets
+            .SelectMany(d => new[] { d.Datasheettype }
+                .Concat(d.Keywords.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)))
+            .Where(t => !string.IsNullOrEmpty(t))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Concat(datasheets.Select(d => d.FactionName).Distinct().Select(f => $"Faction: {f}"));
+        sb.Append("<table><tr><td class=\"section-label\">Categories</td><td>" +
+                  $"{Html(string.Join(", ", categoryTokens))}</td></tr></table>");
+
+        sb.Append("</div>");
     }
 
     private static string Html(string? s) => WebUtility.HtmlEncode(s ?? "");
