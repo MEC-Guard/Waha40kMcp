@@ -4,7 +4,7 @@
 
 *[Deutsche Version / German version](README.md)*
 
-An [MCP](https://modelcontextprotocol.io) (Model Context Protocol) server for Warhammer 40,000 (10th Edition) that supplies Claude (or any other MCP-capable client) with live data from [Wahapedia](https://wahapedia.ru) and the official [Munitorum Field Manual](https://mfm.warhammer-community.com).
+An [MCP](https://modelcontextprotocol.io) (Model Context Protocol) server for Warhammer 40,000 (11th Edition) that supplies Claude (or any other MCP-capable client) with live data from [Wahapedia](https://wahapedia.ru) and the official [Munitorum Field Manual](https://mfm.warhammer-community.com).
 
 *Powered by Wahapedia — not affiliated with Games Workshop or Wahapedia.*
 
@@ -149,8 +149,8 @@ Automatically reads weapon keywords **and** datasheet abilities (re-rolls, Feel 
 | `simulate_combat` | same as above, plus `iterations=10000` | **Monte Carlo simulation** with actual dice rolls instead of a pure expected value: shows median, 10th/90th percentile, min/max, probability of killing 0 models, and a text histogram of the result distribution. More realistic than `calculate_combat` for tabletop decisions, since it reveals dice-luck variance. |
 
 **Also supports:**
-- **Blast** — `defender_models` sets the target unit's model count; 6-10 models automatically adds +1 Attack, 11+ models adds +3 Attacks (10th edition core rule).
-- **Benefit of Cover** — `defender_cover: true` treats AP -1 weapons as AP 0 (does not affect AP -2 or worse, per the rules).
+- **Blast** — `defender_models` sets the target unit's model count; automatically adds +1 Attack per full 5 models, uncapped (11th edition core rule).
+- **Benefit of Cover** — `defender_cover: true` gives the attacker -1 to hit (11th edition rule; doesn't stack with other -1-to-hit effects like Stealth, since hit-roll modifiers are capped at ±1).
 - **Non-standard critical thresholds** — ability text such as "Critical Hits on a 5+" is detected automatically and factored into the Sustained Hits / Lethal Hits / Devastating Wounds math.
 - **Detachment abilities & enhancements** — `attacker_detachment?`/`defender_detachment?` and `attacker_enhancement?`/`defender_enhancement?` fold a detachment's ability or a carried enhancement (e.g. "4+ invulnerable save") into the calculation, just like datasheet abilities. See `list_detachments()`/`list_enhancements()` for valid names.
 

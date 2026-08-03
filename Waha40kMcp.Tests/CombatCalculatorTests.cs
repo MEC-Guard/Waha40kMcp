@@ -35,7 +35,7 @@ public class CombatCalculatorTests
         Assert.Equal(expected, CombatCalculator.ParseSave(save));
     }
 
-    // ── WoundProb (10th-Ed Wundtabelle) ─────────────────────────────────────
+    // ── WoundProb (Wundtabelle, unverändert seit 10th Edition) ──────────────
 
     [Theory]
     [InlineData(8, 4, 5.0 / 6)]  // S >= 2x T
@@ -263,11 +263,13 @@ public class CombatCalculatorTests
     // ── BLAST ────────────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData(5, 0)]   // unter 6 Modellen: kein Bonus
-    [InlineData(6, 1)]   // 6-10 Modelle: +1 Attacke
-    [InlineData(10, 1)]
-    [InlineData(11, 3)]  // 11+ Modelle: +3 Attacken
-    [InlineData(20, 3)]
+    [InlineData(4, 0)]   // unter 5 Modellen: kein Bonus
+    [InlineData(5, 1)]   // je vollständiger 5er-Gruppe: +1 Attacke (11th-Edition-Regel)
+    [InlineData(9, 1)]
+    [InlineData(10, 2)]
+    [InlineData(14, 2)]
+    [InlineData(15, 3)]
+    [InlineData(20, 4)]
     public void CalculateWeapon_Blast_AddsAttacksBasedOnDefenderModelCount(int defenderModels, int expectedBonus)
     {
         var weapon = new DatasheetWeapon
@@ -301,39 +303,44 @@ public class CombatCalculatorTests
         Assert.Equal(vs5.TotalAttacks, vs20.TotalAttacks, 3);
     }
 
-    // ── Benefit of Cover ─────────────────────────────────────────────────────
+    // ── Benefit of Cover (11th Edition: -1 auf den Trefferwurf) ─────────────
 
-    [Fact]
-    public void CalculateWeapon_Cover_NeutralizesApMinus1()
+    [Theory]
+    [InlineData("-1")]
+    [InlineData("-2")]
+    [InlineData("0")]
+    public void CalculateWeapon_Cover_ReducesHitChanceRegardlessOfWeaponAp(string ap)
     {
         var weapon = new DatasheetWeapon
         {
             Name = "Bolt Rifle", Type = "ranged",
-            A = "10", BsWs = "3+", S = "4", Ap = "-1", D = "1", Keywords = "",
+            A = "10", BsWs = "3+", S = "4", Ap = ap, D = "1", Keywords = "",
         };
         var noAbilities = new CombatAbilities();
 
         var withoutCover = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, defenderCover: false, noAbilities, noAbilities);
         var withCover = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, defenderCover: true, noAbilities, noAbilities);
 
-        // Mit Cover wird AP-1 zu AP0 -> besserer Save -> weniger fehlgeschlagene Saves -> weniger Schaden.
-        Assert.True(withCover.AvgFailedSaves < withoutCover.AvgFailedSaves);
+        // Cover macht in der 11th Edition den Trefferwurf schwerer (-1), unabhängig vom AP der Waffe.
+        Assert.True(withCover.AvgHits < withoutCover.AvgHits);
     }
 
     [Fact]
-    public void CalculateWeapon_Cover_DoesNotAffectApMinus2OrWorse()
+    public void CalculateWeapon_Cover_DoesNotStackWithOtherMinusOneToHitSources()
     {
         var weapon = new DatasheetWeapon
         {
-            Name = "Plasma Gun", Type = "ranged",
-            A = "10", BsWs = "3+", S = "7", Ap = "-2", D = "1", Keywords = "",
+            Name = "Bolt Rifle", Type = "ranged",
+            A = "10", BsWs = "3+", S = "4", Ap = "0", D = "1", Keywords = "",
         };
         var noAbilities = new CombatAbilities();
+        var stealthy = new CombatAbilities { MinusOneToHit = true };
 
-        var withoutCover = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, defenderCover: false, noAbilities, noAbilities);
-        var withCover = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, defenderCover: true, noAbilities, noAbilities);
+        // Trefferwurf-Modifikatoren sind auf ±1 gedeckelt: Stealth + Cover ergibt weiterhin nur -1, nicht -2.
+        var stealthOnly = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, defenderCover: false, noAbilities, stealthy);
+        var stealthAndCover = CombatCalculator.CalculateWeapon(weapon, 1, 4, 3, 0, 1, 0, 5, defenderCover: true, noAbilities, stealthy);
 
-        Assert.Equal(withoutCover.AvgFailedSaves, withCover.AvgFailedSaves, 5);
+        Assert.Equal(stealthOnly.AvgHits, stealthAndCover.AvgHits, 5);
     }
 
     // ── Kritische Treffer/Wunden ab abweichender Schwelle ───────────────────

@@ -8,7 +8,7 @@ using Waha40kMcp.Models;
 namespace Waha40kMcp.Tools;
 
 /// <summary>
-/// MathHammer Combat Calculator für Warhammer 40K 10th Edition.
+/// MathHammer Combat Calculator für Warhammer 40K 11th Edition.
 /// Berücksichtigt Waffen-Keywords UND Datasheet-Fähigkeiten automatisch.
 /// </summary>
 [McpServerToolType]
@@ -252,7 +252,7 @@ public class CombatCalculator(WahapediaRepository repo)
         [Description("Name des Support-Charakters beim Angreifer (optional), z.B. 'Apothecary'")] string? attacker_support = null,
         [Description("Name des Support-Charakters beim Verteidiger (optional), z.B. 'Painboy'")] string? defender_support = null,
         [Description("Anzahl Modelle im Verteidiger-Trupp (relevant für BLAST-Waffen: +1 Attacke bei 6-10, +3 bei 11+ Modellen)")] int defender_models = 5,
-        [Description("Hat der Verteidiger Benefit of Cover? Waffen mit AP -1 werden dadurch zu AP 0 (gilt nicht für AP -2 oder schlechter)")] bool defender_cover = false,
+        [Description("Hat der Verteidiger Benefit of Cover? Gibt dem Angreifer -1 auf den Trefferwurf (11th-Edition-Regel; stapelt nicht mit anderen -1-auf-Treffer-Effekten wie Stealth)")] bool defender_cover = false,
         [Description("Detachment des Angreifers (optional), dessen Detachment-Fähigkeit einfließt, z.B. 'Shield Host'")] string? attacker_detachment = null,
         [Description("Name der Enhancement, die der Angreifer(-Leader) trägt (optional), z.B. 'Aegis Projector'")] string? attacker_enhancement = null,
         [Description("Detachment des Verteidigers (optional), dessen Detachment-Fähigkeit einfließt")] string? defender_detachment = null,
@@ -462,7 +462,7 @@ public class CombatCalculator(WahapediaRepository repo)
         [Description("Name des Support-Charakters beim Angreifer (optional), z.B. 'Apothecary'")] string? attacker_support = null,
         [Description("Name des Support-Charakters beim Verteidiger (optional), z.B. 'Painboy'")] string? defender_support = null,
         [Description("Anzahl Modelle im Verteidiger-Trupp (relevant für BLAST-Waffen: +1 Attacke bei 6-10, +3 bei 11+ Modellen)")] int defender_models = 5,
-        [Description("Hat der Verteidiger Benefit of Cover? Waffen mit AP -1 werden dadurch zu AP 0 (gilt nicht für AP -2 oder schlechter)")] bool defender_cover = false,
+        [Description("Hat der Verteidiger Benefit of Cover? Gibt dem Angreifer -1 auf den Trefferwurf (11th-Edition-Regel; stapelt nicht mit anderen -1-auf-Treffer-Effekten wie Stealth)")] bool defender_cover = false,
         [Description("Detachment des Angreifers (optional), dessen Detachment-Fähigkeit einfließt, z.B. 'Shield Host'")] string? attacker_detachment = null,
         [Description("Name der Enhancement, die der Angreifer(-Leader) trägt (optional), z.B. 'Aegis Projector'")] string? attacker_enhancement = null,
         [Description("Detachment des Verteidigers (optional), dessen Detachment-Fähigkeit einfließt")] string? defender_detachment = null,
@@ -699,8 +699,6 @@ public class CombatCalculator(WahapediaRepository repo)
 
         int weaponS  = int.TryParse(weapon.S, out var s) ? s : 4;
         int weaponAp = int.TryParse(weapon.Ap, out var apRaw) ? Math.Abs(apRaw) : 0;
-        // Benefit of Cover: eine Attacke mit AP -1 wird dadurch zu AP 0 (nicht bei AP -2 oder schlechter).
-        if (defenderCover && weaponAp == 1) weaponAp = 0;
         int bsWs = ParseSave(weapon.BsWs);
 
         int hits = 0;
@@ -716,7 +714,11 @@ public class CombatCalculator(WahapediaRepository repo)
             else if (!isTorrent && attacker.RerollAllHits && roll < bsWs)
                 roll = RollD6(rng);
 
-            int effectiveBs = bsWs + (defender.MinusOneToHit ? 1 : 0);
+            // Benefit of Cover (11th Edition): -1 auf den Trefferwurf des Angreifers, statt
+            // wie in der 10th Edition den AP der Waffe zu reduzieren. Stapelt sich nicht mit
+            // anderen -1-auf-Treffer-Quellen (z.B. Stealth) — Trefferwurf-Modifikatoren sind
+            // auf ±1 gedeckelt.
+            int effectiveBs = bsWs + ((defender.MinusOneToHit || defenderCover) ? 1 : 0);
             bool isHit = isTorrent || roll >= Math.Min(effectiveBs, 6);
             if (!isHit) continue;
 
@@ -804,15 +806,15 @@ public class CombatCalculator(WahapediaRepository repo)
     }
 
     /// <summary>
-    /// BLAST: erhöht die Attacken-Charakteristik einmalig (nicht pro Modell) um +1 bei 6-10
-    /// Modellen im Zieltrupp bzw. +3 bei 11+ Modellen (10th-Edition-Kernregel).
+    /// BLAST: erhöht die Attacken-Charakteristik einmalig (nicht pro Modell) um +1 pro
+    /// vollständiger 5er-Gruppe an Modellen im Zieltrupp (11th-Edition-Kernregel;
+    /// skaliert linear ohne Deckel, ersetzt die alte 10th-Edition-Stufenregel
+    /// +1 bei 6-10 / +3 bei 11+ Modellen).
     /// </summary>
     private static int BlastBonusAttacks(bool isBlast, int defenderModels)
     {
         if (!isBlast) return 0;
-        if (defenderModels >= 11) return 3;
-        if (defenderModels >= 6) return 1;
-        return 0;
+        return defenderModels / 5;
     }
 
     private static int WoundTarget(int s, int t)
@@ -868,8 +870,6 @@ public class CombatCalculator(WahapediaRepository repo)
 
         int weaponS  = int.TryParse(weapon.S, out var s) ? s : 4;
         int weaponAp = int.TryParse(weapon.Ap, out var apRaw) ? Math.Abs(apRaw) : 0;
-        // Benefit of Cover: eine Attacke mit AP -1 wird dadurch zu AP 0 (nicht bei AP -2 oder schlechter).
-        if (defenderCover && weaponAp == 1) weaponAp = 0;
         double avgDmg = ParseDice(weapon.D);
         if (defender.DamageReduction > 0)
             avgDmg = Math.Max(1, avgDmg - defender.DamageReduction);
@@ -884,7 +884,11 @@ public class CombatCalculator(WahapediaRepository repo)
         }
         else
         {
-            int effectiveBs = bsWs + (defender.MinusOneToHit ? 1 : 0);
+            // Benefit of Cover (11th Edition): -1 auf den Trefferwurf des Angreifers, statt
+            // wie in der 10th Edition den AP der Waffe zu reduzieren. Stapelt sich nicht mit
+            // anderen -1-auf-Treffer-Quellen (z.B. Stealth) — Trefferwurf-Modifikatoren sind
+            // auf ±1 gedeckelt.
+            int effectiveBs = bsWs + ((defender.MinusOneToHit || defenderCover) ? 1 : 0);
             effectiveBs = Math.Min(effectiveBs, 6);
             rawHitChance = effectiveBs > 0 ? (7.0 - effectiveBs) / 6.0 : 0.5;
         }

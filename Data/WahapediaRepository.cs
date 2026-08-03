@@ -7,11 +7,13 @@ namespace Waha40kMcp.Data;
 
 /// <summary>
 /// Lädt alle CSV-Dateien von Wahapedia und hält sie im Speicher.
-/// Basis-URL: https://wahapedia.ru/wh40k10ed/
+/// Basis-URL: https://wahapedia.ru/wh40k11ed/ (aktuelle Edition; wh40k10ed/ ist seit
+/// dem Wechsel auf 11th Edition nur noch das eingefrorene Archiv der Vorgänger-Edition).
+/// Das CSV-Spaltenschema ist zwischen 10ed und 11ed identisch geblieben.
 /// </summary>
 public class WahapediaRepository
 {
-    private static readonly string BaseUrl = "https://wahapedia.ru/wh40k10ed/";
+    private static readonly string BaseUrl = "https://wahapedia.ru/wh40k11ed/";
     private static readonly string CacheDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Waha40kMcp", "cache");

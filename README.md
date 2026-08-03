@@ -4,7 +4,7 @@
 
 *[English version](README.en.md)*
 
-Ein [MCP](https://modelcontextprotocol.io)-Server (Model Context Protocol) für Warhammer 40.000 (10th Edition), der Claude (oder jeden anderen MCP-fähigen Client) mit Live-Daten von [Wahapedia](https://wahapedia.ru) und dem offiziellen [Munitorum Field Manual](https://mfm.warhammer-community.com) versorgt.
+Ein [MCP](https://modelcontextprotocol.io)-Server (Model Context Protocol) für Warhammer 40.000 (11th Edition), der Claude (oder jeden anderen MCP-fähigen Client) mit Live-Daten von [Wahapedia](https://wahapedia.ru) und dem offiziellen [Munitorum Field Manual](https://mfm.warhammer-community.com) versorgt.
 
 *Powered by Wahapedia — nicht mit Games Workshop oder Wahapedia affiliiert.*
 
@@ -149,8 +149,8 @@ Liest Waffen-Keywords **und** Datasheet-Fähigkeiten automatisch aus (Re-rolls, 
 | `simulate_combat` | wie oben, zusätzlich `iterations=10000` | **Monte-Carlo-Simulation** mit echten Würfelwürfen statt reinem Erwartungswert: zeigt Median, 10./90. Perzentil, Min/Max, Wahrscheinlichkeit für 0 getötete Modelle und ein Text-Histogramm der Ergebnisverteilung. Realistischer als `calculate_combat` für Entscheidungen am Spieltisch, da Würfelglück-Streuung sichtbar wird. |
 
 **Zusätzlich unterstützte Mechaniken:**
-- **Blast** — `defender_models` gibt die Modellanzahl im Ziel-Trupp an; bei 6-10 Modellen gibt's automatisch +1 Attacke, bei 11+ Modellen +3 Attacken (10th-Edition-Kernregel).
-- **Benefit of Cover** — `defender_cover: true` setzt Waffen mit AP -1 automatisch auf AP 0 (wirkt sich nicht auf AP -2 oder schlechter aus, wie in den Regeln vorgesehen).
+- **Blast** — `defender_models` gibt die Modellanzahl im Ziel-Trupp an; pro vollständiger 5er-Gruppe an Modellen gibt's automatisch +1 Attacke, ohne Deckel (11th-Edition-Kernregel).
+- **Benefit of Cover** — `defender_cover: true` gibt dem Angreifer -1 auf den Trefferwurf (11th-Edition-Regel; stapelt sich nicht mit anderen -1-auf-Treffer-Effekten wie Stealth, da Trefferwurf-Modifikatoren auf ±1 gedeckelt sind).
 - **Abweichende Crit-Schwellen** — Fähigkeitstexte wie „Critical Hits on a 5+" werden automatisch erkannt und gehen in die Sustained-Hits-/Lethal-Hits-/Devastating-Wounds-Rechnung ein.
 - **Detachment-Fähigkeiten & Enhancements** — `attacker_detachment?`/`defender_detachment?` und `attacker_enhancement?`/`defender_enhancement?` lassen die Detachment-Regel bzw. eine getragene Enhancement (z.B. „4+ invulnerable save") in die Rechnung einfließen, genau wie Datasheet-Fähigkeiten. Siehe `list_detachments()`/`list_enhancements()` für gültige Namen.
 
